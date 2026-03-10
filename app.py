@@ -54,23 +54,4 @@ if st.sidebar.button("Logout"):
     st.session_state['authenticated'] = False
     st.session_state['role'] = None
     st.session_state['username'] = None
-    st.session_state['team_access'] = None
-    st.rerun()
-
-st.title("Interactive Skill Matrix")
-
-# --- FLASH MESSAGE SYSTEM ---
-# This ensures success messages stay visible after the page reloads
-if 'flash_msg' in st.session_state:
-    st.success(st.session_state['flash_msg'])
-    del st.session_state['flash_msg']
-
-if 'flash_error' in st.session_state:
-    st.error(st.session_state['flash_error'])
-    del st.session_state['flash_error']
-
-# --- INITIALIZE REAL DATA ---
-if 'qa_data' not in st.session_state:
-    qa_data = {
-        'Name': ['Dominic Raj', 'Karthika', 'Sangeetha Balajirao', 'Balaji Kupsingh'], 
-        '
+    st.session_state['team_access
