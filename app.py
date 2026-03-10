@@ -6,12 +6,11 @@ st.set_page_config(page_title="Skill Matrix Dashboard", layout="wide")
 
 # --- USER DATABASE & ROLES ---
 USERS = {
-    "admin": {"password": "admin123$", "role": "admin", "team": "All"},
-    "canyonqa": {"password": "qa123$", "role": "editor", "team": "QA"},
-    "canyonuiux": {"password": "uiux123$", "role": "editor", "team": "UIUX"},
-    "canyondev": {"password": "dev123$", "role": "editor", "team": "Dev"}
+    "admin": {"password": "adminpassword", "role": "admin", "team": "All"},
+    "qa_lead": {"password": "qapassword", "role": "editor", "team": "QA"},
+    "uiux_lead": {"password": "uiuxpassword", "role": "editor", "team": "UIUX"},
+    "dev_lead": {"password": "devpassword", "role": "editor", "team": "Dev"}
 }
-
 
 # --- AUTHENTICATION STATE ---
 if 'authenticated' not in st.session_state:
@@ -165,10 +164,15 @@ def display_admin_controls(team_name, df_key):
                     st.success(f"Added {new_skill} to the {team_name} matrix!")
                     st.rerun()
 
-
 def render_heatmap(df_key):
     df = st.session_state[df_key]
-    heatmap_data = df.set_index('Name').drop(columns=[col for col in ['Designation', 'Team/Project'] if col in df.columns])
+    
+    # Drop columns not needed for the heatmap
+    drop_cols = [col for col in ['Designation', 'Team/Project'] if col in df.columns]
+    heatmap_data = df.drop(columns=drop_cols)
+
+    # Identify only the numeric skill columns to apply colors to
+    skill_cols = [col for col in heatmap_data.columns if col != 'Name']
 
     def apply_color_logic(val):
         try:
@@ -180,8 +184,11 @@ def render_heatmap(df_key):
             pass
         return ''
 
-    styled_heatmap = heatmap_data.style.map(apply_color_logic)
-    st.dataframe(styled_heatmap, use_container_width=True)
+    # Apply the color style ONLY to the skill columns, ignoring the Name column
+    styled_heatmap = heatmap_data.style.map(apply_color_logic, subset=skill_cols)
+    
+    # Display the dataframe and hide the default index to prevent duplication errors
+    st.dataframe(styled_heatmap, use_container_width=True, hide_index=True)
 
 
 # --- DETERMINE VIEW BASED ON ROLE ---
