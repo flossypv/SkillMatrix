@@ -41,59 +41,83 @@ default_dev = {
 def ensure_worksheet_exists(sheet_name):
     """Uses Google API to silently create a new tab in Google Sheets if it doesn't exist."""
     try:
-        # Load secrets and extract the URL
         secrets_dict = dict(st.secrets["connections"]["gsheets"])
         url = secrets_dict.pop("spreadsheet", None) 
-        
-        # Authenticate with Google API directly
         creds = Credentials.from_service_account_info(
             secrets_dict,
-            scopes=[
-                "https://www.googleapis.com/auth/spreadsheets",
-                "https://www.googleapis.com/auth/drive"
-            ]
+            scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         )
         gc = gspread.authorize(creds)
         sh = gc.open_by_url(url)
-        
-        # Check if worksheet exists; if not, create it!
         try:
             sh.worksheet(sheet_name)
         except gspread.exceptions.WorksheetNotFound:
             sh.add_worksheet(title=sheet_name, rows=100, cols=20)
-    except Exception as e:
-        # Fails silently so the rest of the app can try to recover
+    except Exception:
         pass
 
+
+# --- DYNAMIC CREDENTIALS MANAGEMENT ---
+def load_credentials():
+    """Loads login credentials from Google Sheets."""
+    try:
+        df = conn.read(worksheet="Credentials", ttl=0).dropna(how='all')
+        if df.empty: raise Exception("Empty Credentials")
+        return df
+    except Exception:
+        default_users = pd.DataFrame({
+            "Username": ["admin", "canyonqa", "canyonuiux", "canyondev"],
+            "Password": ["admin123$", "qa123$", "uiux123$", "dev123$"],
+            "Role": ["admin", "editor", "editor", "editor"],
+            "Team": ["All", "Canyon", "Canyon", "Canyon"],
+            "Department": ["All", "QA", "UIUX", "Dev"]
+        })
+        ensure_worksheet_exists("Credentials")
+        conn.update(worksheet="Credentials", data=default_users)
+        return default_users
+
+def add_credential(username, password, role, team, dept):
+    creds_df = load_credentials()
+    if username in creds_df['Username'].values:
+        return False
+    new_user = pd.DataFrame([{"Username": username, "Password": password, "Role": role, "Team": team, "Department": dept}])
+    updated_creds = pd.concat([creds_df, new_user], ignore_index=True)
+    conn.update(worksheet="Credentials", data=updated_creds)
+    return True
+
+
+# --- DIRECTORY AND MATRIX MANAGEMENT ---
 def load_directory():
-    """Loads the Master Directory of Teams and Departments. Creates it if missing."""
     try:
         df = conn.read(worksheet="Directory", ttl=0).dropna(how='all')
         if df.empty: raise Exception("Empty Directory")
         return df
     except Exception:
         default_dir = pd.DataFrame({"Team": ["Canyon", "Canyon", "Canyon"], "Department": ["QA", "UIUX", "Dev"]})
-        ensure_worksheet_exists("Directory") # Ensure tab exists before writing
+        ensure_worksheet_exists("Directory")
         conn.update(worksheet="Directory", data=default_dir)
         return default_dir
 
+def get_sheet_name(team, dept):
+    return team if dept == "None" else f"{team}_{dept}"
+
+def get_display_name(team, dept):
+    return team if dept == "None" else f"{team} - {dept}"
+
 def load_matrix(team, dept):
-    """Fetches the specific matrix for a Team & Department combination and enforces integer scores."""
-    sheet_name = f"{team}_{dept}"
+    sheet_name = get_sheet_name(team, dept)
     try:
         df = conn.read(worksheet=sheet_name, ttl=0).dropna(how='all', axis=1).dropna(how='all', axis=0)
         if df.empty: raise Exception("Empty Matrix")
     except Exception:
-        # If missing, try to load defaults, or create a blank matrix
         if team == "Canyon" and dept == "QA": df = pd.DataFrame(default_qa)
         elif team == "Canyon" and dept == "UIUX": df = pd.DataFrame(default_uiux)
         elif team == "Canyon" and dept == "Dev": df = pd.DataFrame(default_dev)
         else: df = pd.DataFrame(columns=['Name', 'Designation'])
         
-        ensure_worksheet_exists(sheet_name) # Ensure tab exists before writing
+        ensure_worksheet_exists(sheet_name)
         conn.update(worksheet=sheet_name, data=df)
         
-    # Strictly convert skill columns to integers to prevent 1.0, 2.0 formatting from Google Sheets
     for col in df.columns:
         if col not in ['Name', 'Designation']:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
@@ -101,31 +125,21 @@ def load_matrix(team, dept):
     return df
 
 def save_matrix(team, dept, df):
-    """Saves the DataFrame to its specific Google Sheet tab."""
-    conn.update(worksheet=f"{team}_{dept}", data=df)
+    sheet_name = get_sheet_name(team, dept)
+    conn.update(worksheet=sheet_name, data=df)
 
 def add_to_directory(team, dept):
-    """Registers a new Team/Department combination in the Master Directory."""
     dir_df = load_directory()
     if not ((dir_df['Team'] == team) & (dir_df['Department'] == dept)).any():
-        new_row = pd.DataFrame({"Team": [team], "Department": [dept]})
+        new_row = pd.DataFrame([{"Team": team, "Department": dept}])
         updated_dir = pd.concat([dir_df, new_row], ignore_index=True)
         conn.update(worksheet="Directory", data=updated_dir)
         
-        # Initialize an empty matrix for them
-        sheet_name = f"{team}_{dept}"
+        sheet_name = get_sheet_name(team, dept)
         empty_df = pd.DataFrame(columns=['Name', 'Designation'])
-        ensure_worksheet_exists(sheet_name) # Ensure tab exists before writing
+        ensure_worksheet_exists(sheet_name)
         conn.update(worksheet=sheet_name, data=empty_df)
 
-
-# --- USER DATABASE & ROLES ---
-USERS = {
-    "admin": {"password": "admin123$", "role": "admin", "team": "All", "dept": "All"},
-    "canyonqa": {"password": "qa123$", "role": "editor", "team": "Canyon", "dept": "QA"},
-    "canyonuiux": {"password": "uiux123$", "role": "editor", "team": "Canyon", "dept": "UIUX"},
-    "canyondev": {"password": "dev123$", "role": "editor", "team": "Canyon", "dept": "Dev"}
-}
 
 # --- AUTHENTICATION STATE ---
 if 'authenticated' not in st.session_state:
@@ -146,13 +160,15 @@ if not st.session_state['authenticated']:
         submit = st.form_submit_button("Login")
 
         if submit:
-            user_info = USERS.get(username)
-            if user_info and user_info['password'] == password:
+            creds_df = load_credentials()
+            user_row = creds_df[creds_df['Username'] == username]
+            
+            if not user_row.empty and str(user_row.iloc[0]['Password']) == password:
                 st.session_state['authenticated'] = True
-                st.session_state['role'] = user_info['role']
+                st.session_state['role'] = user_row.iloc[0]['Role']
                 st.session_state['username'] = username
-                st.session_state['team_access'] = user_info['team']
-                st.session_state['dept_access'] = user_info['dept']
+                st.session_state['team_access'] = user_row.iloc[0]['Team']
+                st.session_state['dept_access'] = user_row.iloc[0]['Department']
                 st.rerun()
             else:
                 st.error("Invalid username or password")
@@ -161,14 +177,14 @@ if not st.session_state['authenticated']:
 
 # --- MAIN APP ROUTING ---
 
-# Sidebar Profile & Logout
 st.sidebar.title("Profile")
 st.sidebar.write(f"**User:** {st.session_state['username']}")
 if st.session_state['role'] == 'admin':
     st.sidebar.write("**Access:** Full Admin")
 else:
     st.sidebar.write(f"**Team:** {st.session_state['team_access']}")
-    st.sidebar.write(f"**Department:** {st.session_state['dept_access']}")
+    if st.session_state['dept_access'] != "None":
+        st.sidebar.write(f"**Department:** {st.session_state['dept_access']}")
 
 if st.sidebar.button("Logout"):
     st.session_state['authenticated'] = False
@@ -180,59 +196,49 @@ if st.sidebar.button("Logout"):
 
 st.title("Canyon SkillMatrix")
 
-# --- FLASH MESSAGE SYSTEM ---
 if 'flash_msg' in st.session_state:
     st.success(st.session_state['flash_msg'])
     del st.session_state['flash_msg']
-
 if 'flash_error' in st.session_state:
     st.error(st.session_state['flash_error'])
     del st.session_state['flash_error']
 
 
-# --- REUSABLE FUNCTIONS ---
+# --- REUSABLE UI FUNCTIONS ---
 def display_team_matrix(team, dept, df_key):
-    st.subheader(f"Update Scores: {team} - {dept}")
+    disp_name = get_display_name(team, dept)
+    st.subheader(f"Update Scores: {disp_name}")
     
     df = st.session_state[df_key]
     skill_cols = [col for col in df.columns if col not in ['Name', 'Designation']]
 
     column_config = {
-        col: st.column_config.SelectboxColumn(
-            col, help="Select score (0 to 4)", options=[0, 1, 2, 3, 4], required=True
-        ) for col in skill_cols
+        col: st.column_config.SelectboxColumn(col, options=[0, 1, 2, 3, 4], required=True) 
+        for col in skill_cols
     }
 
-    edited_df = st.data_editor(
-        df, 
-        column_config=column_config, 
-        hide_index=True, 
-        use_container_width=True, 
-        key=f"editor_{team}_{dept}",
-        num_rows="fixed" 
-    )
+    edited_df = st.data_editor(df, column_config=column_config, hide_index=True, use_container_width=True, key=f"editor_{team}_{dept}", num_rows="fixed")
 
     if st.button("💾 Save Changes", type="primary", key=f"save_btn_{team}_{dept}"):
         edited_df.fillna(0, inplace=True) 
-        # Force integer conversion before saving to Google Sheets
         for col in skill_cols:
             edited_df[col] = pd.to_numeric(edited_df[col], errors='coerce').fillna(0).astype(int)
             
         st.session_state[df_key] = edited_df
         save_matrix(team, dept, edited_df)
-        st.session_state['flash_msg'] = f"{team} {dept} database saved successfully!"
+        st.session_state['flash_msg'] = f"{disp_name} database saved successfully!"
         st.rerun()
 
-
 def display_admin_controls(team, dept, df_key):
+    disp_name = get_display_name(team, dept)
     st.divider()
-    st.subheader(f"🛠️ Manage {team} - {dept} Structure")
+    st.subheader(f"🛠️ Manage Structure: {disp_name}")
     
     df = st.session_state[df_key]
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("#### 👤 Department Members")
+        st.markdown("#### 👤 Members")
         with st.form(f"add_member_{team}_{dept}"):
             new_name = st.text_input("Member Name")
             new_designation = st.text_input("Designation")
@@ -240,8 +246,7 @@ def display_admin_controls(team, dept, df_key):
                 if new_name:
                     new_row = {'Name': new_name, 'Designation': new_designation}
                     for col in df.columns:
-                        if col not in ['Name', 'Designation']:
-                            new_row[col] = 0
+                        if col not in ['Name', 'Designation']: new_row[col] = 0
                     
                     updated_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                     st.session_state[df_key] = updated_df
@@ -250,55 +255,38 @@ def display_admin_controls(team, dept, df_key):
                     st.rerun()
 
         with st.form(f"delete_member_{team}_{dept}"):
-            if 'Name' in df.columns and not df.empty:
-                member_to_delete = st.selectbox("Select Member to Remove", df['Name'].tolist())
-            else:
-                member_to_delete = None
-                st.write("No members to delete.")
-                
-            if st.form_submit_button("❌ Delete Member"):
-                if member_to_delete:
-                    updated_df = df[df['Name'] != member_to_delete].reset_index(drop=True)
-                    st.session_state[df_key] = updated_df
-                    save_matrix(team, dept, updated_df)
-                    st.session_state['flash_msg'] = f"Successfully deleted {member_to_delete}."
-                    st.rerun()
+            member_to_delete = st.selectbox("Select Member to Remove", df['Name'].tolist()) if 'Name' in df.columns and not df.empty else None
+            if st.form_submit_button("❌ Delete Member") and member_to_delete:
+                updated_df = df[df['Name'] != member_to_delete].reset_index(drop=True)
+                st.session_state[df_key] = updated_df
+                save_matrix(team, dept, updated_df)
+                st.session_state['flash_msg'] = f"Successfully deleted {member_to_delete}."
+                st.rerun()
 
     with col2:
-        st.markdown("#### 🎯 Department Skills")
+        st.markdown("#### 🎯 Skills")
         with st.form(f"add_skill_{team}_{dept}"):
-            new_skill = st.text_input("Skill Name (e.g., React, AWS)")
+            new_skill = st.text_input("Skill Name")
             if st.form_submit_button("➕ Add Skill"):
                 if new_skill and new_skill not in df.columns:
-                    df[new_skill] = 0 # Default integer
+                    df[new_skill] = 0
                     st.session_state[df_key] = df
                     save_matrix(team, dept, df)
-                    st.session_state['flash_msg'] = f"Successfully added '{new_skill}' to {dept}!"
-                    st.rerun()
-                elif new_skill in df.columns:
-                    st.session_state['flash_error'] = f"The skill '{new_skill}' already exists!"
+                    st.session_state['flash_msg'] = f"Successfully added '{new_skill}'!"
                     st.rerun()
 
         with st.form(f"delete_skill_{team}_{dept}"):
             skills_list = [c for c in df.columns if c not in ['Name', 'Designation']]
-            if skills_list:
-                skill_to_delete = st.selectbox("Select Skill to Remove", skills_list)
-            else:
-                skill_to_delete = None
-                st.write("No skills to delete.")
-                
-            if st.form_submit_button("❌ Delete Skill"):
-                if skill_to_delete:
-                    updated_df = df.drop(columns=[skill_to_delete])
-                    st.session_state[df_key] = updated_df
-                    save_matrix(team, dept, updated_df)
-                    st.session_state['flash_msg'] = f"Successfully removed '{skill_to_delete}'."
-                    st.rerun()
-
+            skill_to_delete = st.selectbox("Select Skill to Remove", skills_list) if skills_list else None
+            if st.form_submit_button("❌ Delete Skill") and skill_to_delete:
+                updated_df = df.drop(columns=[skill_to_delete])
+                st.session_state[df_key] = updated_df
+                save_matrix(team, dept, updated_df)
+                st.session_state['flash_msg'] = f"Successfully removed '{skill_to_delete}'."
+                st.rerun()
 
 def render_heatmap(team, dept):
     df = load_matrix(team, dept)
-    
     if df.empty or len(df.columns) <= 2:
         st.info("No skill data available for a heatmap yet.")
         return
@@ -312,20 +300,17 @@ def render_heatmap(team, dept):
             if val in [0, 1]: return 'background-color: #F8696B; color: black; font-weight: bold;'
             elif val == 2: return 'background-color: #FFEB84; color: black; font-weight: bold;'
             elif val in [3, 4]: return 'background-color: #63BE7B; color: black; font-weight: bold;'
-        except:
-            pass
+        except: pass
         return ''
 
     styled_heatmap = heatmap_data.style.map(apply_color_logic, subset=skill_cols)
     st.dataframe(styled_heatmap, use_container_width=True, hide_index=True)
 
-
 def render_skill_analytics(team, dept):
-    st.header(f"📈 {team} - {dept} Skill Analytics")
+    disp_name = get_display_name(team, dept)
+    st.header(f"📈 {disp_name} Analytics")
     df = load_matrix(team, dept)
-    
-    exclude_cols = ['Name', 'Designation']
-    skill_cols = [col for col in df.columns if col not in exclude_cols]
+    skill_cols = [col for col in df.columns if col not in ['Name', 'Designation']]
     
     if not skill_cols or df.empty:
         st.info("No skills available to analyze.")
@@ -333,90 +318,104 @@ def render_skill_analytics(team, dept):
 
     numeric_df = df.copy()
     for col in skill_cols:
-        # Enforce integers for calculations and display
         numeric_df[col] = pd.to_numeric(numeric_df[col], errors='coerce').fillna(0).astype(int)
         
     st.subheader("1. Skill-wise People Score")
-    selected_skill = st.selectbox(f"Select a Skill to view all {dept} member scores:", skill_cols)
-    
+    selected_skill = st.selectbox("Select a Skill:", skill_cols)
     skill_scores_df = numeric_df[['Name', selected_skill]].sort_values(by=selected_skill, ascending=False)
     
     col1, col2 = st.columns([1, 2])
-    with col1:
-        st.dataframe(skill_scores_df, hide_index=True, use_container_width=True)
-    with col2:
-        st.bar_chart(skill_scores_df.set_index('Name'), color="#63BE7B")
+    with col1: st.dataframe(skill_scores_df, hide_index=True, use_container_width=True)
+    with col2: st.bar_chart(skill_scores_df.set_index('Name'), color="#63BE7B")
         
     st.divider()
-
     st.subheader("2. Top 3 Performers per Skill")
     top3_list = []
     for skill in skill_cols:
         sorted_df = numeric_df[['Name', skill]].sort_values(by=skill, ascending=False)
         sorted_df = sorted_df[sorted_df[skill] > 0] 
-        
-        names = sorted_df['Name'].tolist()
-        scores = sorted_df[skill].tolist()
-        
+        names, scores = sorted_df['Name'].tolist(), sorted_df[skill].tolist()
         top1 = f"{names[0]} ({scores[0]})" if len(names) > 0 else "-"
         top2 = f"{names[1]} ({scores[1]})" if len(names) > 1 else "-"
         top3 = f"{names[2]} ({scores[2]})" if len(names) > 2 else "-"
-        
         top3_list.append({"Skill": skill, "1st Place": top1, "2nd Place": top2, "3rd Place": top3})
-        
     st.dataframe(pd.DataFrame(top3_list), hide_index=True, use_container_width=True)
     
     st.divider()
-
     st.subheader("3. Zero Skill Details (Score = 0)")
     zero_list = []
     for skill in skill_cols:
         zero_members = numeric_df[numeric_df[skill] == 0]['Name'].tolist()
         if zero_members:
-            zero_list.append({
-                "Skill": skill, 
-                "Zero Score Count": len(zero_members),
-                "Members with 0 Score": ", ".join(zero_members)
-            })
+            zero_list.append({"Skill": skill, "Zero Score Count": len(zero_members), "Members with 0 Score": ", ".join(zero_members)})
     
-    if zero_list:
-        st.dataframe(pd.DataFrame(zero_list), hide_index=True, use_container_width=True)
-    else:
-        st.success("Great job! No one has a zero score in any skill.")
+    if zero_list: st.dataframe(pd.DataFrame(zero_list), hide_index=True, use_container_width=True)
+    else: st.success("Great job! No one has a zero score in any skill.")
 
 
-# --- DETERMINE VIEW BASED ON ROLE ---
-
+# --- ADMIN ROLE VIEW ---
 if st.session_state['role'] == 'admin':
-    # Load Directory to know what Teams and Depts exist
     directory_df = load_directory()
     teams_list = directory_df['Team'].unique().tolist()
 
     tab1, tab2, tab3 = st.tabs(["📝 Master Editor", "📊 Rating Dashboard", "📈 Skill Analytics"])
     
     with tab1:
-        st.header("Master Hierarchy Editor")
+        st.header("Master Editor & Management")
         
-        # Admin controls to create new Teams/Depts
-        with st.expander("🏢 Add New Team or Department"):
-            with st.form("new_hierarchy_form"):
-                st.write("Create a new organizational structure. If the Team already exists, just type it exactly as it appears to add a new department to it.")
-                new_t_name = st.text_input("Team Name (e.g., 'Apollo')")
-                new_d_name = st.text_input("Department Name (e.g., 'Backend')")
-                if st.form_submit_button("Create Hierarchy"):
-                    if new_t_name and new_d_name:
-                        add_to_directory(new_t_name, new_d_name)
-                        st.session_state['flash_msg'] = f"Successfully created {new_t_name} - {new_d_name}!"
+        with st.expander("🏢 Manage Organizational Structure"):
+            has_dept = st.radio("Does this Team have departments?", ["No, just a Team", "Yes, Team with Departments"])
+            new_t_name = st.text_input("Team Name (e.g., 'Apollo')")
+            new_d_name = st.text_input("Department Name (e.g., 'Backend')") if has_dept == "Yes, Team with Departments" else "None"
+            
+            if st.button("Create Structure"):
+                if new_t_name:
+                    add_to_directory(new_t_name, new_d_name)
+                    msg = f"Created Team '{new_t_name}'" if new_d_name == "None" else f"Created '{new_t_name} - {new_d_name}'"
+                    st.session_state['flash_msg'] = msg
+                    st.rerun()
+
+        with st.expander("🔐 Manage Login Credentials"):
+            c_user = st.text_input("New Username")
+            c_pass = st.text_input("New Password", type="password")
+            c_role = st.selectbox("Role", ["editor", "admin"])
+            
+            if c_role == "editor":
+                if teams_list:
+                    c_team = st.selectbox("Assign Team", teams_list, key="cred_team")
+                    depts_for_team = directory_df[directory_df['Team'] == c_team]['Department'].unique().tolist()
+                    if "None" in depts_for_team and len(depts_for_team) == 1:
+                        c_dept = "None"
+                        st.info("This team has no departments, so a Team-wide login will be created.")
+                    else:
+                        c_dept = st.selectbox("Assign Department", [d for d in depts_for_team if d != "None"])
+                else:
+                    st.warning("Please create a Team in the Organization Structure first.")
+                    c_team, c_dept = None, None
+            else:
+                c_team, c_dept = "All", "All"
+                st.info("Admin accounts have full access to everything.")
+
+            if st.button("Create Credential"):
+                if c_user and c_pass and c_team:
+                    success = add_credential(c_user, c_pass, c_role, c_team, c_dept)
+                    if success:
+                        st.session_state['flash_msg'] = f"Successfully created user '{c_user}'!"
                         st.rerun()
+                    else:
+                        st.error("Username already exists!")
 
         st.divider()
-        
+        st.subheader("Edit Matrices")
         colA, colB = st.columns(2)
         if teams_list:
             selected_team = colA.selectbox("Select Team:", teams_list)
-            # Filter departments based on selected team
             depts_list = directory_df[directory_df['Team'] == selected_team]['Department'].unique().tolist()
-            selected_dept = colB.selectbox("Select Department:", depts_list)
+            
+            if "None" in depts_list and len(depts_list) == 1:
+                selected_dept = "None"
+            else:
+                selected_dept = colB.selectbox("Select Department:", [d for d in depts_list if d != "None"])
             
             if selected_team and selected_dept:
                 state_key = f"data_{selected_team}_{selected_dept}"
@@ -436,11 +435,15 @@ if st.session_state['role'] == 'admin':
             colA_hm, colB_hm = st.columns(2)
             hm_team = colA_hm.selectbox("Select Team for Dashboard:", teams_list, key="hm_team")
             hm_depts = directory_df[directory_df['Team'] == hm_team]['Department'].unique().tolist()
-            hm_dept = colB_hm.selectbox("Select Department for Dashboard:", hm_depts, key="hm_dept")
+            
+            if "None" in hm_depts and len(hm_depts) == 1:
+                hm_dept = "None"
+            else:
+                hm_dept = colB_hm.selectbox("Select Department for Dashboard:", [d for d in hm_depts if d != "None"], key="hm_dept")
             
             st.divider()
             if hm_team and hm_dept:
-                st.subheader(f"{hm_team} - {hm_dept} Ratings")
+                st.subheader(f"{get_display_name(hm_team, hm_dept)} Ratings")
                 render_heatmap(hm_team, hm_dept)
 
     with tab3:
@@ -448,19 +451,22 @@ if st.session_state['role'] == 'admin':
             colA_an, colB_an = st.columns(2)
             an_team = colA_an.selectbox("Select Team for Analytics:", teams_list, key="an_team")
             an_depts = directory_df[directory_df['Team'] == an_team]['Department'].unique().tolist()
-            an_dept = colB_an.selectbox("Select Department for Analytics:", an_depts, key="an_dept")
+            
+            if "None" in an_depts and len(an_depts) == 1:
+                an_dept = "None"
+            else:
+                an_dept = colB_an.selectbox("Select Department for Analytics:", [d for d in an_depts if d != "None"], key="an_dept")
             
             st.divider()
             if an_team and an_dept:
                 render_skill_analytics(an_team, an_dept)
 
-# Role specific views (Editors)
+# --- EDITOR ROLE VIEW ---
 else:
-    # Restrict to just their Team and Department
     my_team = st.session_state['team_access']
     my_dept = st.session_state['dept_access']
     
-    st.info(f"You are editing the {my_team} {my_dept} Skill Matrix.")
+    st.info(f"You are editing the {get_display_name(my_team, my_dept)} Skill Matrix.")
     
     state_key = f"data_{my_team}_{my_dept}"
     if state_key not in st.session_state:
