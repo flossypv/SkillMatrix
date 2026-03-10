@@ -1,9 +1,3 @@
-Here is the updated code. I have completely removed the Average Skill-wise Score chart from the Analytics dashboard, leaving the remaining three analytical views clearly numbered 1 through 3.
-
-Please completely replace your app.py file with this code:
-
-app.py
-Python
 import streamlit as st
 import pandas as pd
 
