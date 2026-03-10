@@ -1,8 +1,37 @@
 import streamlit as st
 import pandas as pd
+from streamlit_gsheets import GSheetsConnection
 
 # 1. Page Configuration
 st.set_page_config(page_title="Skill Matrix Dashboard", layout="wide")
+
+# --- DATABASE SETUP (GOOGLE SHEETS) ---
+# Establish connection to Google Sheets
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+def load_team_data(team_name, default_data):
+    """Fetches data from Google Sheets. If empty, uploads the default data."""
+    try:
+        # Read the specific tab for the team. ttl=0 ensures we don't cache stale data.
+        df = conn.read(worksheet=team_name, ttl=0)
+        
+        # Clean up any empty trailing columns/rows Google Sheets might append
+        df = df.dropna(how='all', axis=1).dropna(how='all', axis=0)
+        
+        if df.empty:
+            df = pd.DataFrame(default_data)
+            conn.update(worksheet=team_name, data=df)
+        return df
+    except Exception as e:
+        # If the worksheet is completely blank or errors out, write default data
+        df = pd.DataFrame(default_data)
+        conn.update(worksheet=team_name, data=df)
+        return df
+
+def save_team_data(team_name, df):
+    """Saves the DataFrame to the specific Google Sheet tab."""
+    conn.update(worksheet=team_name, data=df)
+
 
 # --- USER DATABASE & ROLES ---
 USERS = {
@@ -67,72 +96,42 @@ if 'flash_error' in st.session_state:
     st.error(st.session_state['flash_error'])
     del st.session_state['flash_error']
 
-# --- INITIALIZE REAL DATA ---
+# --- INITIALIZE REAL DATA FROM GOOGLE SHEETS ---
+default_qa = {
+    'Name': ['Dominic Raj', 'Karthika', 'Sangeetha Balajirao', 'Balaji Kupsingh'], 
+    'Designation': ['Project Manager', 'Lead Quality Analyst', 'Quality Analyst', 'Quality Analyst'], 
+    'Manual': [4, 4, 4, 4], 'Coded Ui': [4, 4, 3, 1], 'Selenium': [4, 3, 1, 3], 'Test Project': [4, 0, 0, 3], 
+    'Acceleq': [2, 1, 1, 1], 'Appium': [2, 0, 0, 3], 'Play wright': [2, 0, 0, 1], 'Test Complete': [2, 2, 2, 2], 
+    'Jmeter': [3, 2, 2, 3], 'API Automation': [1, 0, 0, 0], 'Postman': [2, 2, 2, 2], 'Java': [3, 3, 2, 3], 
+    'C#': [4, 3, 3, 1], 'Phython': [2, 1, 0, 1], 'Azure Test Plan': [4, 4, 2, 3], 'JIRA': [4, 4, 4, 3], 
+    'CI-CD Jenkins': [3, 0, 0, 2], 'RPA': [2, 0, 0, 3], 'SQL': [3, 3, 2, 2], 'ETL Testing': [2, 2, 1, 0], 'BI Testing': [3, 4, 0, 1]
+}
+
+default_uiux = {
+    'Name': ['Ambika', 'Prabavathy'], 
+    'Designation': ['Full Stack Developer', 'Frontend Developer'], 
+    'PHP': [3, 0], 'Wordpress': [3, 3], 'JavaScript': [3, 2], 'HTML': [3, 3], 'CSS': [2, 3], 'MySQL': [3, 0], 'SQL': [2, 0]
+}
+
+default_dev = {
+    'Name': ['Prem', 'Arun Menon', 'Rambabu', 'SaiHari', 'Prathap', 'Aravind', 'Ronald'],
+    'Designation': ['Project Manager', 'Senior Technical Lead', 'Lead Engineer', 'Lead Engineer', 'Lead Engineer', 'Lead Engineer', 'Software Engineer'],
+    'Angular': [3, 3, 3, 0, 0, 2, 2], 'C#': [4, 4, 4, 0, 0, 3, 3], 'Database-SQL server': [3, 4, 3, 4, 4, 3, 3],
+    'WEB API': [4, 3, 3, 0, 0, 3, 2], 'SSIS': [3, 3, 3, 1, 3, 3, 3], 'Tableau': [0, 0, 0, 4, 3, 0, 0],
+    'SSRS': [1, 1, 1, 4, 4, 1, 0], 'Azure Devops': [3, 2, 1, 1, 3, 3, 1], 'MVC': [3, 3, 3, 0, 0, 2, 1],
+    'ASPX': [3, 3, 3, 0, 0, 2, 2], 'WCF': [3, 4, 2, 0, 0, 3, 1], 'Win forms': [3, 2, 1, 0, 0, 3, 1],
+    'Crystal reports': [1, 0, 1, 0, 0, 0, 0], 'Vb.net': [1, 2, 1, 3, 0, 0, 0], 'Javascript': [3, 3, 3, 0, 0, 3, 3],
+    'HTML': [3, 3, 3, 0, 0, 3, 3], 'CSS': [3, 3, 3, 0, 0, 3, 3]
+}
+
 if 'qa_data' not in st.session_state:
-    qa_data = {
-        'Name': ['Dominic Raj', 'Karthika', 'Sangeetha Balajirao', 'Balaji Kupsingh'], 
-        'Designation': ['Project Manager', 'Lead Quality Analyst', 'Quality Analyst', 'Quality Analyst'], 
-        'Manual': [4, 4, 4, 4], 
-        'Coded Ui': [4, 4, 3, 1], 
-        'Selenium': [4, 3, 1, 3], 
-        'Test Project': [4, 0, 0, 3], 
-        'Acceleq': [2, 1, 1, 1], 
-        'Appium': [2, 0, 0, 3], 
-        'Play wright': [2, 0, 0, 1], 
-        'Test Complete': [2, 2, 2, 2], 
-        'Jmeter': [3, 2, 2, 3], 
-        'API Automation': [1, 0, 0, 0], 
-        'Postman': [2, 2, 2, 2], 
-        'Java': [3, 3, 2, 3], 
-        'C#': [4, 3, 3, 1], 
-        'Phython': [2, 1, 0, 1], 
-        'Azure Test Plan': [4, 4, 2, 3], 
-        'JIRA': [4, 4, 4, 3], 
-        'CI-CD Jenkins': [3, 0, 0, 2], 
-        'RPA': [2, 0, 0, 3], 
-        'SQL': [3, 3, 2, 2], 
-        'ETL Testing': [2, 2, 1, 0], 
-        'BI Testing': [3, 4, 0, 1]
-    }
-    st.session_state['qa_data'] = pd.DataFrame(qa_data)
+    st.session_state['qa_data'] = load_team_data("QA", default_qa)
 
 if 'uiux_data' not in st.session_state:
-    uiux_data = {
-        'Name': ['Ambika', 'Prabavathy'], 
-        'Designation': ['Full Stack Developer', 'Frontend Developer'], 
-        'PHP': [3, 0], 
-        'Wordpress': [3, 3], 
-        'JavaScript': [3, 2], 
-        'HTML': [3, 3], 
-        'CSS': [2, 3], 
-        'MySQL': [3, 0], 
-        'SQL': [2, 0]
-    }
-    st.session_state['uiux_data'] = pd.DataFrame(uiux_data)
+    st.session_state['uiux_data'] = load_team_data("UIUX", default_uiux)
 
 if 'dev_data' not in st.session_state:
-    dev_data = {
-        'Name': ['Prem', 'Arun Menon', 'Rambabu', 'SaiHari', 'Prathap', 'Aravind', 'Ronald'],
-        'Designation': ['Project Manager', 'Senior Technical Lead', 'Lead Engineer', 'Lead Engineer', 'Lead Engineer', 'Lead Engineer', 'Software Engineer'],
-        'Angular': [3, 3, 3, 0, 0, 2, 2], 
-        'C#': [4, 4, 4, 0, 0, 3, 3], 
-        'Database-SQL server': [3, 4, 3, 4, 4, 3, 3],
-        'WEB API': [4, 3, 3, 0, 0, 3, 2], 
-        'SSIS': [3, 3, 3, 1, 3, 3, 3], 
-        'Tableau': [0, 0, 0, 4, 3, 0, 0],
-        'SSRS': [1, 1, 1, 4, 4, 1, 0], 
-        'Azure Devops': [3, 2, 1, 1, 3, 3, 1], 
-        'MVC': [3, 3, 3, 0, 0, 2, 1],
-        'ASPX': [3, 3, 3, 0, 0, 2, 2], 
-        'WCF': [3, 4, 2, 0, 0, 3, 1], 
-        'Win forms': [3, 2, 1, 0, 0, 3, 1],
-        'Crystal reports': [1, 0, 1, 0, 0, 0, 0], 
-        'Vb.net': [1, 2, 1, 3, 0, 0, 0], 
-        'Javascript': [3, 3, 3, 0, 0, 3, 3],
-        'HTML': [3, 3, 3, 0, 0, 3, 3], 
-        'CSS': [3, 3, 3, 0, 0, 3, 3]
-    }
-    st.session_state['dev_data'] = pd.DataFrame(dev_data)
+    st.session_state['dev_data'] = load_team_data("Dev", default_dev)
 
 
 # --- REUSABLE FUNCTIONS ---
@@ -157,10 +156,11 @@ def display_team_matrix(team_name, df_key):
         num_rows="fixed" 
     )
 
-    if st.button(f"💾 Save {team_name} Changes", type="primary"):
+    if st.button(f"💾 Save {team_name} Changes to Google Sheets", type="primary"):
         edited_df.fillna(0, inplace=True) 
         st.session_state[df_key] = edited_df
-        st.session_state['flash_msg'] = f"{team_name} team data saved successfully! Analytics and heatmaps have been updated."
+        save_team_data(team_name, edited_df) # Syncs to Google Sheets!
+        st.session_state['flash_msg'] = f"{team_name} database saved successfully! Analytics and heatmaps have been updated."
         st.rerun()
 
 
@@ -186,8 +186,10 @@ def display_admin_controls(team_name, df_key):
                         if col not in ['Name', 'Designation', 'Team/Project']:
                             new_row[col] = 0
                     
-                    st.session_state[df_key] = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-                    st.session_state['flash_msg'] = f"Successfully added {new_name} to the {team_name} team!"
+                    updated_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                    st.session_state[df_key] = updated_df
+                    save_team_data(team_name, updated_df) # Sync to Google Sheets
+                    st.session_state['flash_msg'] = f"Successfully added {new_name} and synced to database!"
                     st.rerun()
 
         with st.form(f"delete_member_{team_name}"):
@@ -195,8 +197,10 @@ def display_admin_controls(team_name, df_key):
             member_to_delete = st.selectbox("Select Member to Remove", df['Name'].tolist())
             if st.form_submit_button("❌ Delete Member"):
                 if member_to_delete:
-                    st.session_state[df_key] = df[df['Name'] != member_to_delete].reset_index(drop=True)
-                    st.session_state['flash_msg'] = f"Successfully deleted {member_to_delete} from the {team_name} team."
+                    updated_df = df[df['Name'] != member_to_delete].reset_index(drop=True)
+                    st.session_state[df_key] = updated_df
+                    save_team_data(team_name, updated_df) # Sync to Google Sheets
+                    st.session_state['flash_msg'] = f"Successfully deleted {member_to_delete} and synced to database."
                     st.rerun()
 
     # --- MANAGE SKILLS ---
@@ -207,8 +211,10 @@ def display_admin_controls(team_name, df_key):
             new_skill = st.text_input("Skill Name (e.g., React, AWS)")
             if st.form_submit_button("➕ Add Skill"):
                 if new_skill and new_skill not in df.columns:
-                    st.session_state[df_key][new_skill] = 0
-                    st.session_state['flash_msg'] = f"Successfully added the skill '{new_skill}' to the {team_name} matrix!"
+                    df[new_skill] = 0
+                    st.session_state[df_key] = df
+                    save_team_data(team_name, df) # Sync to Google Sheets
+                    st.session_state['flash_msg'] = f"Successfully added '{new_skill}' and synced to database!"
                     st.rerun()
                 elif new_skill in df.columns:
                     st.session_state['flash_error'] = f"The skill '{new_skill}' already exists!"
@@ -221,8 +227,10 @@ def display_admin_controls(team_name, df_key):
             
             if st.form_submit_button("❌ Delete Skill"):
                 if skill_to_delete:
-                    st.session_state[df_key] = df.drop(columns=[skill_to_delete])
-                    st.session_state['flash_msg'] = f"Successfully removed the skill '{skill_to_delete}' from the {team_name} matrix."
+                    updated_df = df.drop(columns=[skill_to_delete])
+                    st.session_state[df_key] = updated_df
+                    save_team_data(team_name, updated_df) # Sync to Google Sheets
+                    st.session_state['flash_msg'] = f"Successfully removed '{skill_to_delete}' and synced to database."
                     st.rerun()
 
 
@@ -235,7 +243,7 @@ def render_heatmap(df_key):
 
     def apply_color_logic(val):
         try:
-            val = int(val)
+            val = int(float(val)) # Cast to float first in case sheets passes decimals
             if val in [0, 1]: return 'background-color: #F8696B; color: black; font-weight: bold;'
             elif val == 2: return 'background-color: #FFEB84; color: black; font-weight: bold;'
             elif val in [3, 4]: return 'background-color: #63BE7B; color: black; font-weight: bold;'
@@ -268,7 +276,6 @@ def render_skill_analytics(df_key, team_name):
     st.subheader("1. Skill-wise People Score")
     selected_skill = st.selectbox(f"Select a Skill to view all {team_name} member scores:", skill_cols)
     
-    # Filter and sort data for the selected skill
     skill_scores_df = numeric_df[['Name', selected_skill]].sort_values(by=selected_skill, ascending=False)
     
     col1, col2 = st.columns([1, 2])
@@ -284,7 +291,7 @@ def render_skill_analytics(df_key, team_name):
     top3_list = []
     for skill in skill_cols:
         sorted_df = numeric_df[['Name', skill]].sort_values(by=skill, ascending=False)
-        sorted_df = sorted_df[sorted_df[skill] > 0] # Exclude 0 scores
+        sorted_df = sorted_df[sorted_df[skill] > 0] 
         
         names = sorted_df['Name'].tolist()
         scores = sorted_df[skill].tolist()
@@ -312,72 +319,4 @@ def render_skill_analytics(df_key, team_name):
             })
     
     if zero_list:
-        st.dataframe(pd.DataFrame(zero_list), hide_index=True, use_container_width=True)
-    else:
-        st.success("Great job! No one has a zero score in any skill.")
-
-
-# --- DETERMINE VIEW BASED ON ROLE ---
-
-if st.session_state['team_access'] == 'All':
-    tab1, tab2, tab3 = st.tabs(["📝 Master Editor", "📊 Global Heatmaps", "📈 Skill Analytics"])
-    
-    with tab1:
-        st.header("Master Team Matrix Editor")
-        selected_team = st.selectbox("Select Team to Edit:", options=["QA", "UI/UX", "Dev"], index=0)
-        st.divider()
-        
-        if selected_team == "QA":
-            display_team_matrix("QA", 'qa_data')
-            display_admin_controls("QA", 'qa_data')
-        elif selected_team == "UI/UX":
-            display_team_matrix("UI/UX", 'uiux_data')
-            display_admin_controls("UI/UX", 'uiux_data')
-        elif selected_team == "Dev":
-            display_team_matrix("Dev", 'dev_data')
-            display_admin_controls("Dev", 'dev_data')
-            
-    with tab2:
-        st.header("Global Heatmaps")
-        st.markdown("🔴 **0-1**: Beginner | 🟡 **2**: Intermediate | 🟢 **3-4**: Proficient/Expert")
-        st.subheader("QA Heatmap")
-        render_heatmap('qa_data')
-        st.subheader("UI/UX Heatmap")
-        render_heatmap('uiux_data')
-        st.subheader("Dev Heatmap")
-        render_heatmap('dev_data')
-        
-    with tab3:
-        analytics_team = st.selectbox("Select Team for Analytics:", options=["QA", "UI/UX", "Dev"], index=0)
-        st.divider()
-        if analytics_team == "QA":
-            render_skill_analytics('qa_data', "QA")
-        elif analytics_team == "UI/UX":
-            render_skill_analytics('uiux_data', "UI/UX")
-        elif analytics_team == "Dev":
-            render_skill_analytics('dev_data', "Dev")
-
-# Role specific views
-elif st.session_state['team_access'] == 'QA':
-    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
-    with tab1:
-        st.info("You are editing the Canyon QA Team Skill Matrix.")
-        display_team_matrix("QA", 'qa_data')
-    with tab2:
-        render_skill_analytics('qa_data', "QA")
-
-elif st.session_state['team_access'] == 'UIUX':
-    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
-    with tab1:
-        st.info("You are editing the Canyon UI/UX Team Skill Matrix.")
-        display_team_matrix("UI/UX", 'uiux_data')
-    with tab2:
-        render_skill_analytics('uiux_data', "UI/UX")
-
-elif st.session_state['team_access'] == 'Dev':
-    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
-    with tab1:
-        st.info("You are editing the Canyon Dev Team Skill Matrix.")
-        display_team_matrix("Dev", 'dev_data')
-    with tab2:
-        render_skill_analytics('dev_data', "Dev")
+        st.dataframe(pd.DataFrame(zero_list), hide_
