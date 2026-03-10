@@ -5,7 +5,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # 1. Page Configuration
-st.set_page_config(page_title="Canyon SkillMatrix", layout="wide")
+st.set_page_config(page_title="SkillMatrix", layout="wide")
 
 # --- DATABASE SETUP (GOOGLE SHEETS) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -152,7 +152,7 @@ if 'authenticated' not in st.session_state:
 
 # --- LOGIN PAGE ---
 if not st.session_state['authenticated']:
-    st.title("Canyon SkillMatrix")
+    st.title("SkillMatrix")
     st.write("Please log in to manage your team's skill matrix.")
     
     with st.form("login_form"):
@@ -197,7 +197,7 @@ if st.sidebar.button("Logout"):
     st.session_state['dept_access'] = None
     st.rerun()
 
-st.title("Canyon SkillMatrix")
+st.title("SkillMatrix")
 
 if 'flash_msg' in st.session_state:
     st.success(st.session_state['flash_msg'])
