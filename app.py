@@ -3,7 +3,7 @@ import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 
 # 1. Page Configuration
-st.set_page_config(page_title="Canyon Skill Matrix", layout="wide")
+st.set_page_config(page_title="Canyon SkillMatrix", layout="wide")
 
 # --- DATABASE SETUP (GOOGLE SHEETS) ---
 # Establish connection to Google Sheets
@@ -50,7 +50,7 @@ if 'authenticated' not in st.session_state:
 
 # --- LOGIN PAGE ---
 if not st.session_state['authenticated']:
-    st.title("🔐 Login to Canyon Skill Matrix")
+    st.title("🔐 Login to Canyon SkillMatrix")
     st.write("Please log in to manage your team's skill matrix.")
     
     with st.form("login_form"):
@@ -85,7 +85,7 @@ if st.sidebar.button("Logout"):
     st.session_state['team_access'] = None
     st.rerun()
 
-st.title("Canyon Skill Matrix")
+st.title("Canyon SkillMatrix")
 
 # --- FLASH MESSAGE SYSTEM ---
 if 'flash_msg' in st.session_state:
@@ -255,7 +255,7 @@ def render_heatmap(df_key):
     st.dataframe(styled_heatmap, use_container_width=True, hide_index=True)
 
 
-# --- ANALYTICAL VIEW FUNCTION ---
+# --- ANALYTICAL VIEW FUNCTION (Admin Only) ---
 def render_skill_analytics(df_key, team_name):
     st.header(f"📈 {team_name} Team Skill Analytics")
     df = st.session_state[df_key]
@@ -327,6 +327,7 @@ def render_skill_analytics(df_key, team_name):
 # --- DETERMINE VIEW BASED ON ROLE ---
 
 if st.session_state['team_access'] == 'All':
+    # Admin gets full access: Editor, Heatmaps, and Analytics
     tab1, tab2, tab3 = st.tabs(["📝 Master Editor", "📊 Global Heatmaps", "📈 Skill Analytics"])
     
     with tab1:
@@ -364,27 +365,15 @@ if st.session_state['team_access'] == 'All':
         elif analytics_team == "Dev":
             render_skill_analytics('dev_data', "Dev")
 
-# Role specific views
+# Role specific views (No Analytics or Heatmaps - Only matrix editing)
 elif st.session_state['team_access'] == 'QA':
-    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
-    with tab1:
-        st.info("You are editing the Canyon QA Team Skill Matrix.")
-        display_team_matrix("QA", 'qa_data')
-    with tab2:
-        render_skill_analytics('qa_data', "QA")
+    st.info("You are editing the Canyon QA Team Skill Matrix.")
+    display_team_matrix("QA", 'qa_data')
 
 elif st.session_state['team_access'] == 'UIUX':
-    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
-    with tab1:
-        st.info("You are editing the Canyon UI/UX Team Skill Matrix.")
-        display_team_matrix("UIUX", 'uiux_data')
-    with tab2:
-        render_skill_analytics('uiux_data', "UIUX")
+    st.info("You are editing the Canyon UI/UX Team Skill Matrix.")
+    display_team_matrix("UIUX", 'uiux_data')
 
 elif st.session_state['team_access'] == 'Dev':
-    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
-    with tab1:
-        st.info("You are editing the Canyon Dev Team Skill Matrix.")
-        display_team_matrix("Dev", 'dev_data')
-    with tab2:
-        render_skill_analytics('dev_data', "Dev")
+    st.info("You are editing the Canyon Dev Team Skill Matrix.")
+    display_team_matrix("Dev", 'dev_data')
