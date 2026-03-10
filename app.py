@@ -50,7 +50,7 @@ if 'authenticated' not in st.session_state:
 
 # --- LOGIN PAGE ---
 if not st.session_state['authenticated']:
-    st.title("🔐 Login to Canyon SkillMatrix")
+    st.title("🔐Canyon SkillMatrix")
     st.write("Please log in to manage your team's skill matrix.")
     
     with st.form("login_form"):
@@ -329,7 +329,7 @@ def render_skill_analytics(df_key, team_name):
 
 if st.session_state['team_access'] == 'All':
     # Admin gets full access: Editor, Heatmaps, and Analytics
-    tab1, tab2, tab3 = st.tabs(["📝 Master Editor", "📊 Global Heatmaps", "📈 Skill Analytics"])
+    tab1, tab2, tab3 = st.tabs(["📝 Master Editor", "📊 Rating Dashboard", "📈 Skill Analytics"])
     
     with tab1:
         st.header("Master Team Matrix Editor")
