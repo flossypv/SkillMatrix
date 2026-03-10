@@ -86,11 +86,6 @@ def add_credential(username, password, role, team, dept):
     conn.update(worksheet="Credentials", data=updated_creds)
     return True
 
-def delete_credential(username):
-    creds_df = load_credentials()
-    updated_creds = creds_df[creds_df['Username'] != username]
-    conn.update(worksheet="Credentials", data=updated_creds)
-
 
 # --- DIRECTORY AND MATRIX MANAGEMENT ---
 def load_directory():
@@ -485,10 +480,9 @@ if role in ['superadmin', 'admin']:
 
     # --- TAB 5: USER CREDENTIALS ---
     with t_cred:
-        st.header("🔐 User Credentials Setup")
-        st.write("Configure access levels and assign users to specific teams or departments.")
+        st.header("🔐 New User Credentials")
+        st.write("Create new user accounts and assign their access levels.")
         
-        # Determine dynamic options outside the form
         if role == 'superadmin':
             c_role = st.selectbox("Assign Role", ["editor", "admin", "superadmin"])
             if c_role == "editor":
@@ -536,33 +530,58 @@ if role in ['superadmin', 'admin']:
                     else:
                         st.error("Username already exists!")
 
-    # --- TAB 6: ROLE MANAGEMENT ---
+    # --- TAB 6: ROLE MANAGEMENT (Editable) ---
     with t_role:
         st.header("⚙️ Role Management")
-        creds_df = load_credentials()
+        st.write("View, edit, or delete existing user credentials directly in the table below.")
+        full_creds_df = load_credentials()
         
-        # Restrict view based on access level
-        if role != 'superadmin':
-            creds_df = creds_df[creds_df['Team'] == my_team]
+        # Superadmin sees all; Team admin sees only their team
+        if role == 'superadmin':
+            view_df = full_creds_df.copy()
+            role_options = ["editor", "admin", "superadmin"]
+        else:
+            view_df = full_creds_df[full_creds_df['Team'] == my_team].copy()
+            role_options = ["editor"]
             
-        st.write("Current User Access List:")
-        # Hide the password column for security
-        st.dataframe(creds_df[['Username', 'Role', 'Team', 'Department']], hide_index=True, use_container_width=True)
+        # Configure columns so Passwords are plain text and roles are restricted by access
+        col_config = {
+            "Username": st.column_config.TextColumn("Username", required=True),
+            "Password": st.column_config.TextColumn("Password (Visible)", required=True),
+            "Role": st.column_config.SelectboxColumn("Role", options=role_options, required=True),
+            "Department": st.column_config.TextColumn("Department", required=True)
+        }
         
-        st.divider()
-        st.subheader("Delete User Account")
-        with st.form("delete_user_form"):
-            user_to_delete = st.selectbox("Select User to Remove", creds_df['Username'].tolist())
-            if st.form_submit_button("❌ Delete User"):
-                if user_to_delete == 'superadmin':
-                    st.error("Cannot delete the master superadmin account!")
-                elif user_to_delete == st.session_state['username']:
-                    st.error("You cannot delete your own account while logged in!")
+        # Prevent Team Admins from moving users to other teams
+        if role != 'superadmin':
+            col_config["Team"] = st.column_config.TextColumn("Team", disabled=True)
+            
+        edited_creds = st.data_editor(
+            view_df,
+            column_config=col_config,
+            hide_index=True,
+            use_container_width=True,
+            num_rows="dynamic", # Allows adding and deleting rows directly!
+            key="role_mgmt_editor"
+        )
+        
+        if st.button("💾 Save Credential Changes", type="primary"):
+            # Prevent deleting the master superadmin account
+            if 'superadmin' not in edited_creds['Username'].values and role == 'superadmin':
+                st.error("Error: You cannot delete the master 'superadmin' account!")
+            else:
+                if role == 'superadmin':
+                    new_creds = edited_creds
                 else:
-                    delete_credential(user_to_delete)
-                    st.session_state['flash_msg'] = f"Successfully deleted user '{user_to_delete}'."
-                    st.rerun()
-
+                    # Enforce that team admins can't secretly inject a different team name
+                    edited_creds['Team'] = my_team 
+                    # Merge their team's updated slice back into the master credential dataframe
+                    other_teams_df = full_creds_df[full_creds_df['Team'] != my_team]
+                    new_creds = pd.concat([other_teams_df, edited_creds], ignore_index=True)
+                    
+                conn.update(worksheet="Credentials", data=new_creds)
+                st.session_state['flash_msg'] = "User credentials updated successfully!"
+                st.rerun()
 
 # --- EDITOR ROLE VIEW ---
 else:
