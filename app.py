@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
+import gspread
+from google.oauth2.service_account import Credentials
 
 # 1. Page Configuration
 st.set_page_config(page_title="Canyon SkillMatrix", layout="wide")
@@ -36,6 +38,32 @@ default_dev = {
     'HTML': [3, 3, 3, 0, 0, 3, 3], 'CSS': [3, 3, 3, 0, 0, 3, 3]
 }
 
+def ensure_worksheet_exists(sheet_name):
+    """Uses Google API to silently create a new tab in Google Sheets if it doesn't exist."""
+    try:
+        # Load secrets and extract the URL
+        secrets_dict = dict(st.secrets["connections"]["gsheets"])
+        url = secrets_dict.pop("spreadsheet", None) 
+        
+        # Authenticate with Google API directly
+        creds = Credentials.from_service_account_info(
+            secrets_dict,
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
+        )
+        gc = gspread.authorize(creds)
+        sh = gc.open_by_url(url)
+        
+        # Check if worksheet exists; if not, create it!
+        try:
+            sh.worksheet(sheet_name)
+        except gspread.exceptions.WorksheetNotFound:
+            sh.add_worksheet(title=sheet_name, rows=100, cols=20)
+    except Exception as e:
+        # Fails silently so the rest of the app can try to recover
+        pass
 
 def load_directory():
     """Loads the Master Directory of Teams and Departments. Creates it if missing."""
@@ -45,6 +73,7 @@ def load_directory():
         return df
     except Exception:
         default_dir = pd.DataFrame({"Team": ["Canyon", "Canyon", "Canyon"], "Department": ["QA", "UIUX", "Dev"]})
+        ensure_worksheet_exists("Directory") # Ensure tab exists before writing
         conn.update(worksheet="Directory", data=default_dir)
         return default_dir
 
@@ -61,6 +90,7 @@ def load_matrix(team, dept):
         elif team == "Canyon" and dept == "Dev": df = pd.DataFrame(default_dev)
         else: df = pd.DataFrame(columns=['Name', 'Designation'])
         
+        ensure_worksheet_exists(sheet_name) # Ensure tab exists before writing
         conn.update(worksheet=sheet_name, data=df)
         
     # Strictly convert skill columns to integers to prevent 1.0, 2.0 formatting from Google Sheets
@@ -81,9 +111,12 @@ def add_to_directory(team, dept):
         new_row = pd.DataFrame({"Team": [team], "Department": [dept]})
         updated_dir = pd.concat([dir_df, new_row], ignore_index=True)
         conn.update(worksheet="Directory", data=updated_dir)
+        
         # Initialize an empty matrix for them
+        sheet_name = f"{team}_{dept}"
         empty_df = pd.DataFrame(columns=['Name', 'Designation'])
-        conn.update(worksheet=f"{team}_{dept}", data=empty_df)
+        ensure_worksheet_exists(sheet_name) # Ensure tab exists before writing
+        conn.update(worksheet=sheet_name, data=empty_df)
 
 
 # --- USER DATABASE & ROLES ---
