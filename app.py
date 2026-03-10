@@ -239,4 +239,152 @@ def render_heatmap(df_key):
     
     # Safely drop columns using errors='ignore' so it never crashes even if columns are missing
     heatmap_data = df.drop(columns=['Designation', 'Team/Project'], errors='ignore')
-    skill_cols = [col
+    skill_cols = [col for col in heatmap_data.columns if col != 'Name']
+
+    def apply_color_logic(val):
+        try:
+            val = int(float(val)) # Cast to float first in case sheets passes decimals
+            if val in [0, 1]: return 'background-color: #F8696B; color: black; font-weight: bold;'
+            elif val == 2: return 'background-color: #FFEB84; color: black; font-weight: bold;'
+            elif val in [3, 4]: return 'background-color: #63BE7B; color: black; font-weight: bold;'
+        except:
+            pass
+        return ''
+
+    styled_heatmap = heatmap_data.style.map(apply_color_logic, subset=skill_cols)
+    st.dataframe(styled_heatmap, use_container_width=True, hide_index=True)
+
+
+# --- ANALYTICAL VIEW FUNCTION ---
+def render_skill_analytics(df_key, team_name):
+    st.header(f"📈 {team_name} Team Skill Analytics")
+    df = st.session_state[df_key]
+    
+    exclude_cols = ['Name', 'Designation', 'Team/Project']
+    skill_cols = [col for col in df.columns if col not in exclude_cols]
+    
+    if not skill_cols:
+        st.info("No skills available to analyze.")
+        return
+
+    # Ensure numeric for calculations
+    numeric_df = df.copy()
+    for col in skill_cols:
+        numeric_df[col] = pd.to_numeric(numeric_df[col], errors='coerce').fillna(0)
+        
+    # --- 1. Skill Wise People Score ---
+    st.subheader("1. Skill-wise People Score")
+    selected_skill = st.selectbox(f"Select a Skill to view all {team_name} member scores:", skill_cols)
+    
+    skill_scores_df = numeric_df[['Name', selected_skill]].sort_values(by=selected_skill, ascending=False)
+    
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.dataframe(skill_scores_df, hide_index=True, use_container_width=True)
+    with col2:
+        st.bar_chart(skill_scores_df.set_index('Name'), color="#63BE7B")
+        
+    st.divider()
+
+    # --- 2. Top 3 Performers per Skill ---
+    st.subheader("2. Top 3 Performers per Skill")
+    top3_list = []
+    for skill in skill_cols:
+        sorted_df = numeric_df[['Name', skill]].sort_values(by=skill, ascending=False)
+        sorted_df = sorted_df[sorted_df[skill] > 0] 
+        
+        names = sorted_df['Name'].tolist()
+        scores = sorted_df[skill].tolist()
+        
+        top1 = f"{names[0]} ({scores[0]})" if len(names) > 0 else "-"
+        top2 = f"{names[1]} ({scores[1]})" if len(names) > 1 else "-"
+        top3 = f"{names[2]} ({scores[2]})" if len(names) > 2 else "-"
+        
+        top3_list.append({"Skill": skill, "1st Place": top1, "2nd Place": top2, "3rd Place": top3})
+        
+    st.dataframe(pd.DataFrame(top3_list), hide_index=True, use_container_width=True)
+    
+    st.divider()
+
+    # --- 3. Zero Skill Details ---
+    st.subheader("3. Zero Skill Details (Score = 0)")
+    zero_list = []
+    for skill in skill_cols:
+        zero_members = numeric_df[numeric_df[skill] == 0]['Name'].tolist()
+        if zero_members:
+            zero_list.append({
+                "Skill": skill, 
+                "Zero Score Count": len(zero_members),
+                "Members with 0 Score": ", ".join(zero_members)
+            })
+    
+    if zero_list:
+        st.dataframe(pd.DataFrame(zero_list), hide_index=True, use_container_width=True)
+    else:
+        st.success("Great job! No one has a zero score in any skill.")
+
+
+# --- DETERMINE VIEW BASED ON ROLE ---
+
+if st.session_state['team_access'] == 'All':
+    tab1, tab2, tab3 = st.tabs(["📝 Master Editor", "📊 Global Heatmaps", "📈 Skill Analytics"])
+    
+    with tab1:
+        st.header("Master Team Matrix Editor")
+        selected_team = st.selectbox("Select Team to Edit:", options=["QA", "UI/UX", "Dev"], index=0)
+        st.divider()
+        
+        if selected_team == "QA":
+            display_team_matrix("QA", 'qa_data')
+            display_admin_controls("QA", 'qa_data')
+        elif selected_team == "UI/UX":
+            display_team_matrix("UIUX", 'uiux_data')
+            display_admin_controls("UIUX", 'uiux_data')
+        elif selected_team == "Dev":
+            display_team_matrix("Dev", 'dev_data')
+            display_admin_controls("Dev", 'dev_data')
+            
+    with tab2:
+        st.header("Global Heatmaps")
+        st.markdown("🔴 **0-1**: Beginner | 🟡 **2**: Intermediate | 🟢 **3-4**: Proficient/Expert")
+        st.subheader("QA Heatmap")
+        render_heatmap('qa_data')
+        st.subheader("UI/UX Heatmap")
+        render_heatmap('uiux_data')
+        st.subheader("Dev Heatmap")
+        render_heatmap('dev_data')
+        
+    with tab3:
+        analytics_team = st.selectbox("Select Team for Analytics:", options=["QA", "UI/UX", "Dev"], index=0)
+        st.divider()
+        if analytics_team == "QA":
+            render_skill_analytics('qa_data', "QA")
+        elif analytics_team == "UI/UX":
+            render_skill_analytics('uiux_data', "UIUX")
+        elif analytics_team == "Dev":
+            render_skill_analytics('dev_data', "Dev")
+
+# Role specific views
+elif st.session_state['team_access'] == 'QA':
+    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
+    with tab1:
+        st.info("You are editing the Canyon QA Team Skill Matrix.")
+        display_team_matrix("QA", 'qa_data')
+    with tab2:
+        render_skill_analytics('qa_data', "QA")
+
+elif st.session_state['team_access'] == 'UIUX':
+    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
+    with tab1:
+        st.info("You are editing the Canyon UI/UX Team Skill Matrix.")
+        display_team_matrix("UIUX", 'uiux_data')
+    with tab2:
+        render_skill_analytics('uiux_data', "UIUX")
+
+elif st.session_state['team_access'] == 'Dev':
+    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
+    with tab1:
+        st.info("You are editing the Canyon Dev Team Skill Matrix.")
+        display_team_matrix("Dev", 'dev_data')
+    with tab2:
+        render_skill_analytics('dev_data', "Dev")
