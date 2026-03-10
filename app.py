@@ -362,6 +362,7 @@ my_team = st.session_state['team_access']
 
 if role in ['superadmin', 'admin']:
     directory_df = load_directory()
+    creds_df = load_credentials()
     
     # Restrict teams list based on access level
     if role == 'superadmin':
@@ -369,14 +370,13 @@ if role in ['superadmin', 'admin']:
     else:
         teams_list = [my_team] if my_team in directory_df['Team'].unique().tolist() else []
 
-    # Create the 6 Main Tabs
-    t_edit, t_dash, t_stat, t_hier, t_cred, t_role = st.tabs([
+    # Create the 5 Main Tabs
+    t_edit, t_dash, t_stat, t_hier, t_cred = st.tabs([
         "📝 Matrix Editor", 
         "📊 Rating Dashboard", 
         "📈 Skill Analytics", 
         "🏢 Team Hierarchy", 
-        "🔐 User Credentials", 
-        "⚙️ Role Management"
+        "🔐 Credential Management"
     ])
     
     # --- TAB 1: MATRIX EDITOR ---
@@ -478,51 +478,76 @@ if role in ['superadmin', 'admin']:
             my_depts = directory_df[directory_df['Team'] == my_team]
             st.dataframe(my_depts, hide_index=True)
 
-    # --- TAB 5: USER CREDENTIALS ---
+    # --- TAB 5: CREDENTIAL MANAGEMENT (COMBINED) ---
     with t_cred:
-        st.header("🔐 New User Credentials")
-        st.write("Create new user accounts and assign their access levels.")
+        st.header("Setup New User Credential")
         
+        # Determine dynamic options by filtering out existing assigned credentials
         if role == 'superadmin':
             c_role = st.selectbox("Assign Role", ["editor", "admin", "superadmin"])
+            
             if c_role == "editor":
-                if teams_list:
-                    c_team = st.selectbox("Assign Team", teams_list, key="cred_team")
-                    depts_for_team = directory_df[directory_df['Team'] == c_team]['Department'].unique().tolist()
-                    if "None" in depts_for_team and len(depts_for_team) == 1:
+                existing_editors = creds_df[creds_df['Role'] == 'editor']
+                existing_combos = set(zip(existing_editors['Team'], existing_editors['Department']))
+                all_combos = set(zip(directory_df['Team'], directory_df['Department']))
+                available_combos = all_combos - existing_combos
+                
+                if not available_combos:
+                    st.warning("All Team & Department combinations already have editor credentials assigned.")
+                    c_team, c_dept = None, None
+                else:
+                    available_teams = sorted(list(set([t for t, d in available_combos])))
+                    c_team = st.selectbox("Assign Team", available_teams, key="new_cred_team")
+                    available_depts = sorted([d for t, d in available_combos if t == c_team])
+                    
+                    if "None" in available_depts and len(available_depts) == 1:
                         c_dept = "None"
                         st.info("This team has no departments. Creating a Team-wide Editor login.")
                     else:
-                        c_dept = st.selectbox("Assign Department", [d for d in depts_for_team if d != "None"])
-                else:
-                    st.warning("Create a Team in Hierarchy Setup first.")
-                    c_team, c_dept = None, None
+                        c_dept = st.selectbox("Assign Department", available_depts)
+                        
             elif c_role == "admin":
-                if teams_list:
-                    c_team = st.selectbox("Assign Team Admin rights to:", teams_list, key="cred_team")
+                existing_admins = creds_df[creds_df['Role'] == 'admin']['Team'].tolist()
+                all_teams = directory_df['Team'].unique().tolist()
+                available_teams = [t for t in all_teams if t not in existing_admins]
+                
+                if not available_teams:
+                    st.warning("All Teams already have an admin credential assigned.")
+                    c_team, c_dept = None, None
+                else:
+                    c_team = st.selectbox("Assign Team Admin rights to:", available_teams, key="new_cred_team")
                     c_dept = "All"
                     st.info(f"This user will manage all departments inside '{c_team}'.")
-                else:
-                    st.warning("Create a Team first.")
-                    c_team, c_dept = None, None
             else:
                 c_team, c_dept = "All", "All"
                 st.info("Superadmins have full access across the entire organization.")
-        else:
+                
+        else: # Team Admin Logic
             c_role = "editor"
             st.info("As a Team Admin, you can only create 'Editor' accounts for your own team.")
             c_team = my_team
-            depts_for_team = directory_df[directory_df['Team'] == c_team]['Department'].unique().tolist()
-            if "None" in depts_for_team and len(depts_for_team) == 1:
-                c_dept = "None"
+            existing_editors = creds_df[(creds_df['Role'] == 'editor') & (creds_df['Team'] == my_team)]['Department'].tolist()
+            all_depts = directory_df[directory_df['Team'] == my_team]['Department'].tolist()
+            available_depts = [d for d in all_depts if d not in existing_editors]
+            
+            if not available_depts:
+                st.warning(f"All departments in {my_team} already have editor credentials assigned.")
+                c_team, c_dept = None, None
             else:
-                c_dept = st.selectbox("Assign Department", [d for d in depts_for_team if d != "None"])
+                if "None" in available_depts and len(available_depts) == 1:
+                    c_dept = "None"
+                else:
+                    c_dept = st.selectbox("Assign Department", available_depts)
 
         with st.form("new_user_form"):
             c_user = st.text_input("New Username")
             c_pass = st.text_input("New Password", type="password")
-            if st.form_submit_button("Create Credential"):
-                if c_user and c_pass and c_team:
+            submitted = st.form_submit_button("Create Credential")
+            
+            if submitted:
+                if c_team is None:
+                    st.error("No valid team/department available to assign.")
+                elif c_user and c_pass:
                     success = add_credential(c_user, c_pass, c_role, c_team, c_dept)
                     if success:
                         st.session_state['flash_msg'] = f"Successfully created {c_role} user '{c_user}'!"
@@ -530,21 +555,18 @@ if role in ['superadmin', 'admin']:
                     else:
                         st.error("Username already exists!")
 
-    # --- TAB 6: ROLE MANAGEMENT (Editable) ---
-    with t_role:
-        st.header("⚙️ Role Management")
+        st.divider()
+        st.header("Credential List")
         st.write("View, edit, or delete existing user credentials directly in the table below.")
-        full_creds_df = load_credentials()
         
         # Superadmin sees all; Team admin sees only their team
         if role == 'superadmin':
-            view_df = full_creds_df.copy()
+            view_df = creds_df.copy()
             role_options = ["editor", "admin", "superadmin"]
         else:
-            view_df = full_creds_df[full_creds_df['Team'] == my_team].copy()
+            view_df = creds_df[creds_df['Team'] == my_team].copy()
             role_options = ["editor"]
             
-        # Configure columns so Passwords are plain text and roles are restricted by access
         col_config = {
             "Username": st.column_config.TextColumn("Username", required=True),
             "Password": st.column_config.TextColumn("Password (Visible)", required=True),
@@ -552,7 +574,6 @@ if role in ['superadmin', 'admin']:
             "Department": st.column_config.TextColumn("Department", required=True)
         }
         
-        # Prevent Team Admins from moving users to other teams
         if role != 'superadmin':
             col_config["Team"] = st.column_config.TextColumn("Team", disabled=True)
             
@@ -561,22 +582,19 @@ if role in ['superadmin', 'admin']:
             column_config=col_config,
             hide_index=True,
             use_container_width=True,
-            num_rows="dynamic", # Allows adding and deleting rows directly!
+            num_rows="dynamic",
             key="role_mgmt_editor"
         )
         
         if st.button("💾 Save Credential Changes", type="primary"):
-            # Prevent deleting the master superadmin account
             if 'superadmin' not in edited_creds['Username'].values and role == 'superadmin':
                 st.error("Error: You cannot delete the master 'superadmin' account!")
             else:
                 if role == 'superadmin':
                     new_creds = edited_creds
                 else:
-                    # Enforce that team admins can't secretly inject a different team name
                     edited_creds['Team'] = my_team 
-                    # Merge their team's updated slice back into the master credential dataframe
-                    other_teams_df = full_creds_df[full_creds_df['Team'] != my_team]
+                    other_teams_df = creds_df[creds_df['Team'] != my_team]
                     new_creds = pd.concat([other_teams_df, edited_creds], ignore_index=True)
                     
                 conn.update(worksheet="Credentials", data=new_creds)
