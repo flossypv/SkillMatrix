@@ -6,11 +6,12 @@ st.set_page_config(page_title="Skill Matrix Dashboard", layout="wide")
 
 # --- USER DATABASE & ROLES ---
 USERS = {
-    "admin": {"password": "adminpassword", "role": "admin", "team": "All"},
-    "qa_lead": {"password": "qapassword", "role": "editor", "team": "QA"},
-    "uiux_lead": {"password": "uiuxpassword", "role": "editor", "team": "UIUX"},
-    "dev_lead": {"password": "devpassword", "role": "editor", "team": "Dev"}
+    "admin": {"password": "admin123$", "role": "admin", "team": "All"},
+    "canyonqa": {"password": "qa123$", "role": "editor", "team": "QA"},
+    "canyonuiux": {"password": "uiux123$", "role": "editor", "team": "UIUX"},
+    "canyondev": {"password": "dev123$", "role": "editor", "team": "Dev"}
 }
+
 
 # --- AUTHENTICATION STATE ---
 if 'authenticated' not in st.session_state:
