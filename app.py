@@ -6,10 +6,10 @@ st.set_page_config(page_title="Skill Matrix Dashboard", layout="wide")
 
 # --- USER DATABASE & ROLES ---
 USERS = {
-    "admin": {"password": "admin123$", "role": "admin", "team": "All"},
-    "canyonqa": {"password": "qa123$", "role": "editor", "team": "QA"},
-    "canyonuiux": {"password": "uiux123$", "role": "editor", "team": "UIUX"},
-    "canyondev": {"password": "dev123$", "role": "editor", "team": "Dev"}
+    "admin": {"password": "adminpassword", "role": "admin", "team": "All"},
+    "qa_lead": {"password": "qapassword", "role": "editor", "team": "QA"},
+    "uiux_lead": {"password": "uiuxpassword", "role": "editor", "team": "UIUX"},
+    "dev_lead": {"password": "devpassword", "role": "editor", "team": "Dev"}
 }
 
 # --- AUTHENTICATION STATE ---
@@ -97,6 +97,7 @@ if 'dev_data' not in st.session_state:
 def display_team_matrix(team_name, df_key):
     st.subheader(f"Update Scores: Canyon {team_name} Team")
     
+    # Load the current saved data
     df = st.session_state[df_key]
     skill_cols = [col for col in df.columns if col not in ['Name', 'Designation', 'Team/Project']]
 
@@ -106,9 +107,16 @@ def display_team_matrix(team_name, df_key):
         ) for col in skill_cols
     }
 
-    st.session_state[df_key] = st.data_editor(
+    # Display the editor but DO NOT save to session state immediately
+    edited_df = st.data_editor(
         df, column_config=column_config, hide_index=True, use_container_width=True, key=f"editor_{team_name}"
     )
+
+    # Adding the Save Button
+    if st.button(f"💾 Save {team_name} Changes", type="primary"):
+        # Only overwrite the session state when this button is clicked
+        st.session_state[df_key] = edited_df
+        st.success(f"{team_name} team data saved successfully! The heatmap has been updated.")
 
 def render_heatmap(df_key):
     df = st.session_state[df_key]
@@ -126,17 +134,32 @@ def render_heatmap(df_key):
 
 # --- DETERMINE VIEW BASED ON ROLE ---
 
-# 1. ADMIN VIEW (Sees All Teams via Tabs)
+# 1. ADMIN VIEW (Master Selection Page)
 if st.session_state['team_access'] == 'All':
-    tab1, tab2, tab3, tab4 = st.tabs(["📝 QA Team Matrix", "📝 UI/UX Team Matrix", "📝 Dev Team Matrix", "📊 Global Heatmaps"])
+    tab1, tab2 = st.tabs(["📝 Master Team Matrix Editor", "📊 Global Heatmaps"])
     
     with tab1:
-        display_team_matrix("QA", 'qa_data')
+        st.header("Master Team Matrix Editor")
+        st.write("Select a team from the dropdown below to view and edit their skill matrix.")
+        
+        # Dropdown to select which team to edit
+        selected_team = st.selectbox(
+            "Select Team to Edit:", 
+            options=["QA", "UI/UX", "Dev"],
+            index=0
+        )
+        
+        st.divider()
+        
+        # Render the specific data editor based on the dropdown selection
+        if selected_team == "QA":
+            display_team_matrix("QA", 'qa_data')
+        elif selected_team == "UI/UX":
+            display_team_matrix("UI/UX", 'uiux_data')
+        elif selected_team == "Dev":
+            display_team_matrix("Dev", 'dev_data')
+            
     with tab2:
-        display_team_matrix("UI/UX", 'uiux_data')
-    with tab3:
-        display_team_matrix("Dev", 'dev_data')
-    with tab4:
         st.header("Global Heatmaps (Admin View)")
         st.markdown("🔴 **0-1**: Beginner | 🟡 **2**: Intermediate | 🟢 **3-4**: Proficient/Expert")
         
