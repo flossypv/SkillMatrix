@@ -319,4 +319,72 @@ def render_skill_analytics(df_key, team_name):
             })
     
     if zero_list:
-        st.dataframe(pd.DataFrame(zero_list), hide_
+        st.dataframe(pd.DataFrame(zero_list), hide_index=True, use_container_width=True)
+    else:
+        st.success("Great job! No one has a zero score in any skill.")
+
+
+# --- DETERMINE VIEW BASED ON ROLE ---
+
+if st.session_state['team_access'] == 'All':
+    tab1, tab2, tab3 = st.tabs(["📝 Master Editor", "📊 Global Heatmaps", "📈 Skill Analytics"])
+    
+    with tab1:
+        st.header("Master Team Matrix Editor")
+        selected_team = st.selectbox("Select Team to Edit:", options=["QA", "UI/UX", "Dev"], index=0)
+        st.divider()
+        
+        if selected_team == "QA":
+            display_team_matrix("QA", 'qa_data')
+            display_admin_controls("QA", 'qa_data')
+        elif selected_team == "UI/UX":
+            display_team_matrix("UIUX", 'uiux_data')
+            display_admin_controls("UIUX", 'uiux_data')
+        elif selected_team == "Dev":
+            display_team_matrix("Dev", 'dev_data')
+            display_admin_controls("Dev", 'dev_data')
+            
+    with tab2:
+        st.header("Global Heatmaps")
+        st.markdown("🔴 **0-1**: Beginner | 🟡 **2**: Intermediate | 🟢 **3-4**: Proficient/Expert")
+        st.subheader("QA Heatmap")
+        render_heatmap('qa_data')
+        st.subheader("UI/UX Heatmap")
+        render_heatmap('uiux_data')
+        st.subheader("Dev Heatmap")
+        render_heatmap('dev_data')
+        
+    with tab3:
+        analytics_team = st.selectbox("Select Team for Analytics:", options=["QA", "UI/UX", "Dev"], index=0)
+        st.divider()
+        if analytics_team == "QA":
+            render_skill_analytics('qa_data', "QA")
+        elif analytics_team == "UI/UX":
+            render_skill_analytics('uiux_data', "UIUX")
+        elif analytics_team == "Dev":
+            render_skill_analytics('dev_data', "Dev")
+
+# Role specific views
+elif st.session_state['team_access'] == 'QA':
+    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
+    with tab1:
+        st.info("You are editing the Canyon QA Team Skill Matrix.")
+        display_team_matrix("QA", 'qa_data')
+    with tab2:
+        render_skill_analytics('qa_data', "QA")
+
+elif st.session_state['team_access'] == 'UIUX':
+    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
+    with tab1:
+        st.info("You are editing the Canyon UI/UX Team Skill Matrix.")
+        display_team_matrix("UIUX", 'uiux_data')
+    with tab2:
+        render_skill_analytics('uiux_data', "UIUX")
+
+elif st.session_state['team_access'] == 'Dev':
+    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
+    with tab1:
+        st.info("You are editing the Canyon Dev Team Skill Matrix.")
+        display_team_matrix("Dev", 'dev_data')
+    with tab2:
+        render_skill_analytics('dev_data', "Dev")
