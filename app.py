@@ -1,3 +1,9 @@
+Here is the updated code. I have completely removed the Average Skill-wise Score chart from the Analytics dashboard, leaving the remaining three analytical views clearly numbered 1 through 3.
+
+Please completely replace your app.py file with this code:
+
+app.py
+Python
 import streamlit as st
 import pandas as pd
 
@@ -222,7 +228,6 @@ def display_admin_controls(team_name, df_key):
             if st.form_submit_button("❌ Delete Skill"):
                 if skill_to_delete:
                     st.session_state[df_key] = df.drop(columns=[skill_to_delete])
-                    # Fixed the truncated line here:
                     st.session_state['flash_msg'] = f"Successfully removed the skill '{skill_to_delete}' from the {team_name} matrix."
                     st.rerun()
 
@@ -248,7 +253,7 @@ def render_heatmap(df_key):
     st.dataframe(styled_heatmap, use_container_width=True, hide_index=True)
 
 
-# --- NEW: UPGRADED ANALYTICAL VIEW FUNCTION ---
+# --- ANALYTICAL VIEW FUNCTION ---
 def render_skill_analytics(df_key, team_name):
     st.header(f"📈 {team_name} Team Skill Analytics")
     df = st.session_state[df_key]
@@ -265,16 +270,8 @@ def render_skill_analytics(df_key, team_name):
     for col in skill_cols:
         numeric_df[col] = pd.to_numeric(numeric_df[col], errors='coerce').fillna(0)
         
-    # --- 1. Average Skill-wise Score ---
-    st.subheader("1. Average Skill-wise Score")
-    avg_skills = numeric_df[skill_cols].mean().round(2).reset_index()
-    avg_skills.columns = ['Skill', 'Average Score']
-    st.bar_chart(avg_skills.set_index('Skill'), color="#4472C4")
-    
-    st.divider()
-    
-    # --- 2. Skill Wise People Score ---
-    st.subheader("2. Skill-wise People Score")
+    # --- 1. Skill Wise People Score ---
+    st.subheader("1. Skill-wise People Score")
     selected_skill = st.selectbox(f"Select a Skill to view all {team_name} member scores:", skill_cols)
     
     # Filter and sort data for the selected skill
@@ -288,8 +285,8 @@ def render_skill_analytics(df_key, team_name):
         
     st.divider()
 
-    # --- 3. Top 3 Performers per Skill ---
-    st.subheader("3. Top 3 Performers per Skill")
+    # --- 2. Top 3 Performers per Skill ---
+    st.subheader("2. Top 3 Performers per Skill")
     top3_list = []
     for skill in skill_cols:
         sorted_df = numeric_df[['Name', skill]].sort_values(by=skill, ascending=False)
@@ -308,8 +305,8 @@ def render_skill_analytics(df_key, team_name):
     
     st.divider()
 
-    # --- 4. Zero Skill Details ---
-    st.subheader("4. Zero Skill Details (Score = 0)")
+    # --- 3. Zero Skill Details ---
+    st.subheader("3. Zero Skill Details (Score = 0)")
     zero_list = []
     for skill in skill_cols:
         zero_members = numeric_df[numeric_df[skill] == 0]['Name'].tolist()
