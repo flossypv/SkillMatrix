@@ -50,7 +50,7 @@ if 'authenticated' not in st.session_state:
 
 # --- LOGIN PAGE ---
 if not st.session_state['authenticated']:
-    st.title("Canyon SkillMatrix")
+    st.title("🔐 Login to Canyon SkillMatrix")
     st.write("Please log in to manage your team's skill matrix.")
     
     with st.form("login_form"):
@@ -156,7 +156,8 @@ def display_team_matrix(team_name, df_key):
         num_rows="fixed" 
     )
 
-    if st.button(f"💾 Save {team_name} Changes to Google Sheets", type="primary"):
+    # Simplified button text applied across all views
+    if st.button("💾 Save Changes", type="primary", key=f"save_btn_{team_name}"):
         edited_df.fillna(0, inplace=True) 
         st.session_state[df_key] = edited_df
         save_team_data(team_name, edited_df) # Syncs to Google Sheets!
