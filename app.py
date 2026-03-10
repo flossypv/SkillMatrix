@@ -65,12 +65,13 @@ def load_credentials():
         if df.empty: raise Exception("Empty Credentials")
         return df
     except Exception:
+        # Default users setup: Superadmin, Team Admin, and Editors
         default_users = pd.DataFrame({
-            "Username": ["admin", "canyonqa", "canyonuiux", "canyondev"],
-            "Password": ["admin123$", "qa123$", "uiux123$", "dev123$"],
-            "Role": ["admin", "editor", "editor", "editor"],
-            "Team": ["All", "Canyon", "Canyon", "Canyon"],
-            "Department": ["All", "QA", "UIUX", "Dev"]
+            "Username": ["superadmin", "canyonadmin", "canyonqa", "canyonuiux", "canyondev"],
+            "Password": ["super123$", "admin123$", "qa123$", "uiux123$", "dev123$"],
+            "Role": ["superadmin", "admin", "editor", "editor", "editor"],
+            "Team": ["All", "Canyon", "Canyon", "Canyon", "Canyon"],
+            "Department": ["All", "All", "QA", "UIUX", "Dev"]
         })
         ensure_worksheet_exists("Credentials")
         conn.update(worksheet="Credentials", data=default_users)
@@ -80,6 +81,7 @@ def add_credential(username, password, role, team, dept):
     creds_df = load_credentials()
     if username in creds_df['Username'].values:
         return False
+    
     new_user = pd.DataFrame([{"Username": username, "Password": password, "Role": role, "Team": team, "Department": dept}])
     updated_creds = pd.concat([creds_df, new_user], ignore_index=True)
     conn.update(worksheet="Credentials", data=updated_creds)
@@ -179,8 +181,10 @@ if not st.session_state['authenticated']:
 
 st.sidebar.title("Profile")
 st.sidebar.write(f"**User:** {st.session_state['username']}")
-if st.session_state['role'] == 'admin':
-    st.sidebar.write("**Access:** Full Admin")
+if st.session_state['role'] == 'superadmin':
+    st.sidebar.write("**Access:** Superadmin")
+elif st.session_state['role'] == 'admin':
+    st.sidebar.write(f"**Access:** Team Admin ({st.session_state['team_access']})")
 else:
     st.sidebar.write(f"**Team:** {st.session_state['team_access']}")
     if st.session_state['dept_access'] != "None":
@@ -353,63 +357,88 @@ def render_skill_analytics(team, dept):
     else: st.success("Great job! No one has a zero score in any skill.")
 
 
-# --- ADMIN ROLE VIEW ---
-if st.session_state['role'] == 'admin':
+# --- ADMIN & SUPERADMIN ROLE VIEWS ---
+role = st.session_state['role']
+my_team = st.session_state['team_access']
+
+if role in ['superadmin', 'admin']:
     directory_df = load_directory()
-    teams_list = directory_df['Team'].unique().tolist()
+    
+    # If Superadmin, see all teams. If Admin, lock to their assigned team.
+    if role == 'superadmin':
+        teams_list = directory_df['Team'].unique().tolist()
+    else:
+        teams_list = [my_team] if my_team in directory_df['Team'].unique().tolist() else []
 
     tab1, tab2, tab3 = st.tabs(["📝 Master Editor", "📊 Rating Dashboard", "📈 Skill Analytics"])
     
     with tab1:
         st.header("Master Editor & Management")
         
-        with st.expander("🏢 Manage Organizational Structure"):
-            has_dept = st.radio("Does this Team have departments?", ["No, just a Team", "Yes, Team with Departments"])
-            new_t_name = st.text_input("Team Name (e.g., 'Apollo')")
-            new_d_name = st.text_input("Department Name (e.g., 'Backend')") if has_dept == "Yes, Team with Departments" else "None"
-            
-            if st.button("Create Structure"):
-                if new_t_name:
-                    add_to_directory(new_t_name, new_d_name)
-                    msg = f"Created Team '{new_t_name}'" if new_d_name == "None" else f"Created '{new_t_name} - {new_d_name}'"
-                    st.session_state['flash_msg'] = msg
-                    st.rerun()
-
-        with st.expander("🔐 Manage Login Credentials"):
-            c_user = st.text_input("New Username")
-            c_pass = st.text_input("New Password", type="password")
-            c_role = st.selectbox("Role", ["editor", "admin"])
-            
-            if c_role == "editor":
-                if teams_list:
-                    c_team = st.selectbox("Assign Team", teams_list, key="cred_team")
-                    depts_for_team = directory_df[directory_df['Team'] == c_team]['Department'].unique().tolist()
-                    if "None" in depts_for_team and len(depts_for_team) == 1:
-                        c_dept = "None"
-                        st.info("This team has no departments, so a Team-wide login will be created.")
-                    else:
-                        c_dept = st.selectbox("Assign Department", [d for d in depts_for_team if d != "None"])
-                else:
-                    st.warning("Please create a Team in the Organization Structure first.")
-                    c_team, c_dept = None, None
-            else:
-                c_team, c_dept = "All", "All"
-                st.info("Admin accounts have full access to everything.")
-
-            if st.button("Create Credential"):
-                if c_user and c_pass and c_team:
-                    success = add_credential(c_user, c_pass, c_role, c_team, c_dept)
-                    if success:
-                        st.session_state['flash_msg'] = f"Successfully created user '{c_user}'!"
+        # Only Superadmins can build entirely new org structures or issue login credentials
+        if role == 'superadmin':
+            with st.expander("🏢 Manage Organizational Structure"):
+                has_dept = st.radio("Does this Team have departments?", ["No, just a Team", "Yes, Team with Departments"])
+                new_t_name = st.text_input("Team Name (e.g., 'Apollo')")
+                new_d_name = st.text_input("Department Name (e.g., 'Backend')") if has_dept == "Yes, Team with Departments" else "None"
+                
+                if st.button("Create Structure"):
+                    if new_t_name:
+                        add_to_directory(new_t_name, new_d_name)
+                        msg = f"Created Team '{new_t_name}'" if new_d_name == "None" else f"Created '{new_t_name} - {new_d_name}'"
+                        st.session_state['flash_msg'] = msg
                         st.rerun()
+
+            with st.expander("🔐 Manage Login Credentials"):
+                c_user = st.text_input("New Username")
+                c_pass = st.text_input("New Password", type="password")
+                c_role = st.selectbox("Role", ["editor", "admin", "superadmin"])
+                
+                if c_role == "editor":
+                    if teams_list:
+                        c_team = st.selectbox("Assign Team", teams_list, key="cred_team")
+                        depts_for_team = directory_df[directory_df['Team'] == c_team]['Department'].unique().tolist()
+                        if "None" in depts_for_team and len(depts_for_team) == 1:
+                            c_dept = "None"
+                            st.info("This team has no departments, so a Team-wide login will be created.")
+                        else:
+                            c_dept = st.selectbox("Assign Department", [d for d in depts_for_team if d != "None"])
                     else:
-                        st.error("Username already exists!")
+                        st.warning("Please create a Team in the Organization Structure first.")
+                        c_team, c_dept = None, None
+                        
+                elif c_role == "admin":
+                    if teams_list:
+                        c_team = st.selectbox("Assign Team Admin rights to:", teams_list, key="cred_team")
+                        c_dept = "All"
+                        st.info(f"This user will manage all departments inside '{c_team}'.")
+                    else:
+                        st.warning("Please create a Team first.")
+                        c_team, c_dept = None, None
+                else:
+                    c_team, c_dept = "All", "All"
+                    st.info("Superadmins have full access to everything across the entire organization.")
+
+                if st.button("Create Credential"):
+                    if c_user and c_pass and c_team:
+                        success = add_credential(c_user, c_pass, c_role, c_team, c_dept)
+                        if success:
+                            st.session_state['flash_msg'] = f"Successfully created {c_role} user '{c_user}'!"
+                            st.rerun()
+                        else:
+                            st.error("Username already exists!")
 
         st.divider()
         st.subheader("Edit Matrices")
         colA, colB = st.columns(2)
+        
         if teams_list:
-            selected_team = colA.selectbox("Select Team:", teams_list)
+            if role == 'superadmin':
+                selected_team = colA.selectbox("Select Team:", teams_list)
+            else:
+                selected_team = my_team
+                colA.write(f"**Team:** {selected_team}")
+                
             depts_list = directory_df[directory_df['Team'] == selected_team]['Department'].unique().tolist()
             
             if "None" in depts_list and len(depts_list) == 1:
@@ -426,14 +455,20 @@ if st.session_state['role'] == 'admin':
                 display_team_matrix(selected_team, selected_dept, state_key)
                 display_admin_controls(selected_team, selected_dept, state_key)
         else:
-            st.warning("No Teams found. Please create one above.")
+            st.warning("No Teams found. Please create one.")
             
     with tab2:
         st.header("Rating Dashboard")
         st.markdown("🔴 **0-1**: Beginner | 🟡 **2**: Intermediate | 🟢 **3-4**: Proficient/Expert")
+        
         if teams_list:
             colA_hm, colB_hm = st.columns(2)
-            hm_team = colA_hm.selectbox("Select Team for Dashboard:", teams_list, key="hm_team")
+            if role == 'superadmin':
+                hm_team = colA_hm.selectbox("Select Team for Dashboard:", teams_list, key="hm_team")
+            else:
+                hm_team = my_team
+                colA_hm.write(f"**Team:** {hm_team}")
+                
             hm_depts = directory_df[directory_df['Team'] == hm_team]['Department'].unique().tolist()
             
             if "None" in hm_depts and len(hm_depts) == 1:
@@ -449,7 +484,12 @@ if st.session_state['role'] == 'admin':
     with tab3:
         if teams_list:
             colA_an, colB_an = st.columns(2)
-            an_team = colA_an.selectbox("Select Team for Analytics:", teams_list, key="an_team")
+            if role == 'superadmin':
+                an_team = colA_an.selectbox("Select Team for Analytics:", teams_list, key="an_team")
+            else:
+                an_team = my_team
+                colA_an.write(f"**Team:** {an_team}")
+                
             an_depts = directory_df[directory_df['Team'] == an_team]['Department'].unique().tolist()
             
             if "None" in an_depts and len(an_depts) == 1:
@@ -463,7 +503,6 @@ if st.session_state['role'] == 'admin':
 
 # --- EDITOR ROLE VIEW ---
 else:
-    my_team = st.session_state['team_access']
     my_dept = st.session_state['dept_access']
     
     st.info(f"You are editing the {get_display_name(my_team, my_dept)} Skill Matrix.")
