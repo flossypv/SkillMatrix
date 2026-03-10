@@ -12,7 +12,6 @@ USERS = {
     "canyondev": {"password": "dev123$", "role": "editor", "team": "Dev"}
 }
 
-
 # --- AUTHENTICATION STATE ---
 if 'authenticated' not in st.session_state:
     st.session_state['authenticated'] = False
@@ -68,7 +67,7 @@ if 'flash_error' in st.session_state:
     st.error(st.session_state['flash_error'])
     del st.session_state['flash_error']
 
-# --- INITIALIZE REAL DATA (Reformatted vertically to prevent copy-paste errors) ---
+# --- INITIALIZE REAL DATA ---
 if 'qa_data' not in st.session_state:
     qa_data = {
         'Name': ['Dominic Raj', 'Karthika', 'Sangeetha Balajirao', 'Balaji Kupsingh'], 
@@ -161,7 +160,7 @@ def display_team_matrix(team_name, df_key):
     if st.button(f"💾 Save {team_name} Changes", type="primary"):
         edited_df.fillna(0, inplace=True) 
         st.session_state[df_key] = edited_df
-        st.session_state['flash_msg'] = f"{team_name} team data saved successfully! The heatmap has been updated."
+        st.session_state['flash_msg'] = f"{team_name} team data saved successfully! Analytics and heatmaps have been updated."
         st.rerun()
 
 
@@ -176,7 +175,6 @@ def display_admin_controls(team_name, df_key):
     # --- MANAGE MEMBERS ---
     with col1:
         st.markdown("#### 👤 Team Members")
-        
         with st.form(f"add_member_{team_name}"):
             st.write("**Add New Member**")
             new_name = st.text_input("Member Name")
@@ -204,7 +202,6 @@ def display_admin_controls(team_name, df_key):
     # --- MANAGE SKILLS ---
     with col2:
         st.markdown("#### 🎯 Skill Categories")
-        
         with st.form(f"add_skill_{team_name}"):
             st.write("**Add New Skill**")
             new_skill = st.text_input("Skill Name (e.g., React, AWS)")
@@ -250,21 +247,56 @@ def render_heatmap(df_key):
     st.dataframe(styled_heatmap, use_container_width=True, hide_index=True)
 
 
+# --- NEW: ANALYTICAL VIEW FUNCTION ---
+def render_skill_analytics(df_key, team_name):
+    st.header(f"📈 {team_name} Team Skill Analytics")
+    df = st.session_state[df_key]
+    
+    # Identify skill columns
+    exclude_cols = ['Name', 'Designation', 'Team/Project']
+    skill_cols = [col for col in df.columns if col not in exclude_cols]
+    
+    if not skill_cols:
+        st.info("No skills available to analyze.")
+        return
+
+    # Convert to numeric for calculations
+    numeric_df = df[skill_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
+    
+    # 1. Average score per skill
+    avg_skills = numeric_df.mean().reset_index()
+    avg_skills.columns = ['Skill', 'Average Score']
+    
+    # 2. Count of Proficient Members (Score >= 3)
+    proficient_counts = (numeric_df >= 3).sum().reset_index()
+    proficient_counts.columns = ['Skill', 'Proficient Members (Score 3-4)']
+
+    # Merge into one analytics dataframe
+    analytics_df = pd.merge(avg_skills, proficient_counts, on='Skill')
+    
+    # Render Bar Charts
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write("**Average Score per Skill**")
+        st.bar_chart(avg_skills.set_index('Skill'), color="#4472C4")
+        
+    with col2:
+        st.write("**Highly Proficient Members per Skill (Score 3 or 4)**")
+        st.bar_chart(proficient_counts.set_index('Skill'), color="#63BE7B")
+        
+    st.divider()
+    st.write("**Raw Analytics Data**")
+    st.dataframe(analytics_df, hide_index=True, use_container_width=True)
+
+
 # --- DETERMINE VIEW BASED ON ROLE ---
 
 if st.session_state['team_access'] == 'All':
-    tab1, tab2 = st.tabs(["📝 Master Team Matrix Editor", "📊 Global Heatmaps"])
+    tab1, tab2, tab3 = st.tabs(["📝 Master Editor", "📊 Global Heatmaps", "📈 Skill Analytics"])
     
     with tab1:
         st.header("Master Team Matrix Editor")
-        st.write("Select a team from the dropdown below to view, edit, and modify their skill matrix structure.")
-        
-        selected_team = st.selectbox(
-            "Select Team to Edit:", 
-            options=["QA", "UI/UX", "Dev"],
-            index=0
-        )
-        
+        selected_team = st.selectbox("Select Team to Edit:", options=["QA", "UI/UX", "Dev"], index=0)
         st.divider()
         
         if selected_team == "QA":
@@ -278,28 +310,46 @@ if st.session_state['team_access'] == 'All':
             display_admin_controls("Dev", 'dev_data')
             
     with tab2:
-        st.header("Global Heatmaps (Admin View)")
+        st.header("Global Heatmaps")
         st.markdown("🔴 **0-1**: Beginner | 🟡 **2**: Intermediate | 🟢 **3-4**: Proficient/Expert")
-        
-        st.subheader("Canyon QA Heatmap")
+        st.subheader("QA Heatmap")
         render_heatmap('qa_data')
-        
-        st.divider()
-        st.subheader("Canyon UI/UX Heatmap")
+        st.subheader("UI/UX Heatmap")
         render_heatmap('uiux_data')
-
-        st.divider()
-        st.subheader("Canyon Dev Heatmap")
+        st.subheader("Dev Heatmap")
         render_heatmap('dev_data')
+        
+    with tab3:
+        analytics_team = st.selectbox("Select Team for Analytics:", options=["QA", "UI/UX", "Dev"], index=0)
+        st.divider()
+        if analytics_team == "QA":
+            render_skill_analytics('qa_data', "QA")
+        elif analytics_team == "UI/UX":
+            render_skill_analytics('uiux_data', "UI/UX")
+        elif analytics_team == "Dev":
+            render_skill_analytics('dev_data', "Dev")
 
+# Role specific views
 elif st.session_state['team_access'] == 'QA':
-    st.info("You are editing the Canyon QA Team Skill Matrix.")
-    display_team_matrix("QA", 'qa_data')
+    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
+    with tab1:
+        st.info("You are editing the Canyon QA Team Skill Matrix.")
+        display_team_matrix("QA", 'qa_data')
+    with tab2:
+        render_skill_analytics('qa_data', "QA")
 
 elif st.session_state['team_access'] == 'UIUX':
-    st.info("You are editing the Canyon UI/UX Team Skill Matrix.")
-    display_team_matrix("UI/UX", 'uiux_data')
+    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
+    with tab1:
+        st.info("You are editing the Canyon UI/UX Team Skill Matrix.")
+        display_team_matrix("UI/UX", 'uiux_data')
+    with tab2:
+        render_skill_analytics('uiux_data', "UI/UX")
 
 elif st.session_state['team_access'] == 'Dev':
-    st.info("You are editing the Canyon Dev Team Skill Matrix.")
-    display_team_matrix("Dev", 'dev_data')
+    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
+    with tab1:
+        st.info("You are editing the Canyon Dev Team Skill Matrix.")
+        display_team_matrix("Dev", 'dev_data')
+    with tab2:
+        render_skill_analytics('dev_data', "Dev")
