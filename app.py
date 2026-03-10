@@ -21,11 +21,6 @@ if 'authenticated' not in st.session_state:
 if not st.session_state['authenticated']:
     st.title("🔐 Login to Skill Matrix")
     st.write("Please log in to continue.")
-    st.markdown("""
-    **Test Credentials:**
-    * **Admin Account:** Username: `admin` | Password: `admin123` (Can see Heatmap)
-    * **User Account:** Username: `employee` | Password: `user123` (Cannot see Heatmap)
-    """)
     
     with st.form("login_form"):
         username = st.text_input("Username")
