@@ -1,17 +1,11 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.patches import Patch
 
 # 1. Page Configuration
-st.set_page_config(page_title="Skill Matrix Dashboard", layout="wide")
-st.title("Interactive Skill Matrix Dashboard")
-st.markdown("Edit the scores directly in the table below using the **dropdown menus (0-4)**. The heatmap will automatically update to reflect your changes!")
+st.set_page_config(page_title="Skill Matrix", layout="wide")
+st.title("Interactive Skill Matrix")
 
 # 2. Initialize Data in Session State
-# This ensures the data isn't reset every time you interact with the app
 if 'skill_data' not in st.session_state:
     data = {
         'Name': ['Prem', 'Arun Menon', 'Rambabu', 'SaiHari', 'Prathap', 'Aravind', 'Ronald'],
@@ -36,72 +30,68 @@ if 'skill_data' not in st.session_state:
     }
     st.session_state['skill_data'] = pd.DataFrame(data)
 
-df = st.session_state['skill_data']
+# Create two distinct pages/tabs
+tab1, tab2 = st.tabs(["📝 Data Entry & Definitions", "📊 Heatmap Dashboard"])
 
-# 3. Interactive Data Editor (Dropdowns)
-st.subheader("📝 Data Entry (Dropdowns for 0-4)")
+with tab1:
+    st.header("Skill Level Definitions")
+    
+    # Replicating your ReadMe definitions
+    st.markdown("""
+    | Score | Skill Level | Description |
+    | :--- | :--- | :--- |
+    | **4** | **Expert** | Fully Capable & Experienced. Sought for help by other departments. Needs no assistance. |
+    | **3** | **Proficient** | Capable & Experienced. Able to work independently with little help. |
+    | **2** | **Intermediate** | Able to perform. Has some experience. Needs help from time to time. |
+    | **1** | **Beginner** | Limited Knowledge. Cannot work on critical tasks. Needs significant help. |
+    | **0** | **No Knowledge** | No knowledge & Experience. |
+    """)
+    
+    st.divider()
+    st.subheader("Update Team Scores")
+    st.write("Edit the scores below using the dropdowns. Your changes will immediately reflect on the Heatmap tab.")
+    
+    df = st.session_state['skill_data']
+    skill_cols = [col for col in df.columns if col not in ['Name', 'Designation']]
 
-# Identify skill columns (everything except Name and Designation)
-skill_cols = [col for col in df.columns if col not in ['Name', 'Designation']]
+    # Setup dropdowns for 0-4
+    column_config = {
+        col: st.column_config.SelectboxColumn(
+            col,
+            help=f"Select score (0 to 4)",
+            options=[0, 1, 2, 3, 4],
+            required=True
+        )
+        for col in skill_cols
+    }
 
-# Configure the columns to be Selectboxes limiting input from 0 to 4
-column_config = {
-    col: st.column_config.SelectboxColumn(
-        col,
-        help=f"Select score for {col} (0=None, 4=Expert)",
-        options=[0, 1, 2, 3, 4],
-        required=True
+    # Data editor UI
+    edited_df = st.data_editor(
+        df, 
+        column_config=column_config, 
+        hide_index=True,
+        use_container_width=True,
+        height=300
     )
-    for col in skill_cols
-}
 
-# Display the editor and save the changes back to a new dataframe
-edited_df = st.data_editor(
-    df, 
-    column_config=column_config, 
-    hide_index=True,
-    use_container_width=True
-)
+with tab2:
+    st.header("Team Heatmap")
+    st.markdown("🔴 **0-1**: Beginner/No Knowledge | 🟡 **2**: Intermediate | 🟢 **3-4**: Proficient/Expert")
+    
+    # Prepare data for heatmap
+    heatmap_data = edited_df.set_index('Name').drop(columns=['Designation'])
 
-# 4. Auto-updating Heatmap Visualization
-st.subheader("📊 Live Heatmap (Headers on Top)")
+    # Apply the traffic-light color logic directly to the dataframe
+    def apply_color_logic(val):
+        if val in [0, 1]:
+            return 'background-color: #F8696B; color: black; font-weight: bold;' # Red
+        elif val == 2:
+            return 'background-color: #FFEB84; color: black; font-weight: bold;' # Yellow
+        elif val in [3, 4]:
+            return 'background-color: #63BE7B; color: black; font-weight: bold;' # Green
+        return ''
 
-# Prepare data for heatmap: set index to Name and drop Designation
-heatmap_data = edited_df.set_index('Name').drop(columns=['Designation'])
+    styled_heatmap = heatmap_data.style.map(apply_color_logic)
 
-# Define Custom Colormap (Red=0, Yellow=2, Green=4)
-colors = ["#F8696B", "#FFEB84", "#63BE7B"]
-cmap = LinearSegmentedColormap.from_list("custom_heatmap", colors, N=5)
-
-# Initialize Matplotlib Figure
-fig, ax = plt.subplots(figsize=(18, 7))
-
-# Generate the Heatmap
-sns.heatmap(heatmap_data, annot=True, cmap=cmap, cbar=False, 
-            linewidths=1, linecolor='lightgray', 
-            vmin=0, vmax=4, annot_kws={"size": 11, "weight": "bold"}, ax=ax)
-
-# Move X-axis (Technical Skills) to the top
-ax.xaxis.tick_top()
-ax.xaxis.set_label_position('top')
-
-# Formatting Labels and Titles
-plt.xlabel("Technical Skills", fontsize=13, labelpad=15, fontweight='bold')
-plt.ylabel("Team Members", fontsize=13, labelpad=10, fontweight='bold')
-
-# Rotate X-axis labels to prevent overlap
-plt.xticks(rotation=45, ha='left', fontsize=11)
-plt.yticks(rotation=0, fontsize=11)
-
-# Adding the Legend
-legend_elements = [
-    Patch(facecolor="#F8696B", label='0 - No knowledge / 1 - Beginner'),
-    Patch(facecolor="#FFEB84", label='2 - Intermediate'),
-    Patch(facecolor="#63BE7B", label='3 - Proficient / 4 - Expert')
-]
-ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.01, 1), fontsize=11)
-
-plt.tight_layout()
-
-# Render the plot in Streamlit
-st.pyplot(fig)
+    # Display the heatmap
+    st.dataframe(styled_heatmap, use_container_width=True, height=400)
