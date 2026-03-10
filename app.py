@@ -116,4 +116,277 @@ if 'dev_data' not in st.session_state:
         'Designation': ['Project Manager', 'Senior Technical Lead', 'Lead Engineer', 'Lead Engineer', 'Lead Engineer', 'Lead Engineer', 'Software Engineer'],
         'Angular': [3, 3, 3, 0, 0, 2, 2], 
         'C#': [4, 4, 4, 0, 0, 3, 3], 
-        'Database-SQL server': [3, 4, 3, 4, 4, 3, 3
+        'Database-SQL server': [3, 4, 3, 4, 4, 3, 3],
+        'WEB API': [4, 3, 3, 0, 0, 3, 2], 
+        'SSIS': [3, 3, 3, 1, 3, 3, 3], 
+        'Tableau': [0, 0, 0, 4, 3, 0, 0],
+        'SSRS': [1, 1, 1, 4, 4, 1, 0], 
+        'Azure Devops': [3, 2, 1, 1, 3, 3, 1], 
+        'MVC': [3, 3, 3, 0, 0, 2, 1],
+        'ASPX': [3, 3, 3, 0, 0, 2, 2], 
+        'WCF': [3, 4, 2, 0, 0, 3, 1], 
+        'Win forms': [3, 2, 1, 0, 0, 3, 1],
+        'Crystal reports': [1, 0, 1, 0, 0, 0, 0], 
+        'Vb.net': [1, 2, 1, 3, 0, 0, 0], 
+        'Javascript': [3, 3, 3, 0, 0, 3, 3],
+        'HTML': [3, 3, 3, 0, 0, 3, 3], 
+        'CSS': [3, 3, 3, 0, 0, 3, 3]
+    }
+    st.session_state['dev_data'] = pd.DataFrame(dev_data)
+
+
+# --- REUSABLE FUNCTIONS ---
+def display_team_matrix(team_name, df_key):
+    st.subheader(f"Update Scores: Canyon {team_name} Team")
+    
+    df = st.session_state[df_key]
+    skill_cols = [col for col in df.columns if col not in ['Name', 'Designation', 'Team/Project']]
+
+    column_config = {
+        col: st.column_config.SelectboxColumn(
+            col, help="Select score (0 to 4)", options=[0, 1, 2, 3, 4], required=True
+        ) for col in skill_cols
+    }
+
+    edited_df = st.data_editor(
+        df, 
+        column_config=column_config, 
+        hide_index=True, 
+        use_container_width=True, 
+        key=f"editor_{team_name}",
+        num_rows="fixed" 
+    )
+
+    if st.button(f"💾 Save {team_name} Changes", type="primary"):
+        edited_df.fillna(0, inplace=True) 
+        st.session_state[df_key] = edited_df
+        st.session_state['flash_msg'] = f"{team_name} team data saved successfully! Analytics and heatmaps have been updated."
+        st.rerun()
+
+
+def display_admin_controls(team_name, df_key):
+    st.divider()
+    st.subheader(f"🛠️ Manage {team_name} Structure")
+    
+    df = st.session_state[df_key]
+    
+    col1, col2 = st.columns(2)
+    
+    # --- MANAGE MEMBERS ---
+    with col1:
+        st.markdown("#### 👤 Team Members")
+        with st.form(f"add_member_{team_name}"):
+            st.write("**Add New Member**")
+            new_name = st.text_input("Member Name")
+            new_designation = st.text_input("Designation")
+            if st.form_submit_button("➕ Add Member"):
+                if new_name:
+                    new_row = {'Name': new_name, 'Designation': new_designation}
+                    for col in df.columns:
+                        if col not in ['Name', 'Designation', 'Team/Project']:
+                            new_row[col] = 0
+                    
+                    st.session_state[df_key] = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                    st.session_state['flash_msg'] = f"Successfully added {new_name} to the {team_name} team!"
+                    st.rerun()
+
+        with st.form(f"delete_member_{team_name}"):
+            st.write("**Delete Existing Member**")
+            member_to_delete = st.selectbox("Select Member to Remove", df['Name'].tolist())
+            if st.form_submit_button("❌ Delete Member"):
+                if member_to_delete:
+                    st.session_state[df_key] = df[df['Name'] != member_to_delete].reset_index(drop=True)
+                    st.session_state['flash_msg'] = f"Successfully deleted {member_to_delete} from the {team_name} team."
+                    st.rerun()
+
+    # --- MANAGE SKILLS ---
+    with col2:
+        st.markdown("#### 🎯 Skill Categories")
+        with st.form(f"add_skill_{team_name}"):
+            st.write("**Add New Skill**")
+            new_skill = st.text_input("Skill Name (e.g., React, AWS)")
+            if st.form_submit_button("➕ Add Skill"):
+                if new_skill and new_skill not in df.columns:
+                    st.session_state[df_key][new_skill] = 0
+                    st.session_state['flash_msg'] = f"Successfully added the skill '{new_skill}' to the {team_name} matrix!"
+                    st.rerun()
+                elif new_skill in df.columns:
+                    st.session_state['flash_error'] = f"The skill '{new_skill}' already exists!"
+                    st.rerun()
+
+        with st.form(f"delete_skill_{team_name}"):
+            st.write("**Delete Existing Skill**")
+            skills_list = [c for c in df.columns if c not in ['Name', 'Designation', 'Team/Project']]
+            skill_to_delete = st.selectbox("Select Skill to Remove", skills_list)
+            
+            if st.form_submit_button("❌ Delete Skill"):
+                if skill_to_delete:
+                    st.session_state[df_key] = df.drop(columns=[skill_to_delete])
+                    # Fixed the truncated line here:
+                    st.session_state['flash_msg'] = f"Successfully removed the skill '{skill_to_delete}' from the {team_name} matrix."
+                    st.rerun()
+
+
+def render_heatmap(df_key):
+    df = st.session_state[df_key]
+    
+    drop_cols = [col for col in ['Designation', 'Team/Project'] if col in df.columns]
+    heatmap_data = df.drop(columns=drop_cols)
+    skill_cols = [col for col in heatmap_data.columns if col != 'Name']
+
+    def apply_color_logic(val):
+        try:
+            val = int(val)
+            if val in [0, 1]: return 'background-color: #F8696B; color: black; font-weight: bold;'
+            elif val == 2: return 'background-color: #FFEB84; color: black; font-weight: bold;'
+            elif val in [3, 4]: return 'background-color: #63BE7B; color: black; font-weight: bold;'
+        except:
+            pass
+        return ''
+
+    styled_heatmap = heatmap_data.style.map(apply_color_logic, subset=skill_cols)
+    st.dataframe(styled_heatmap, use_container_width=True, hide_index=True)
+
+
+# --- NEW: UPGRADED ANALYTICAL VIEW FUNCTION ---
+def render_skill_analytics(df_key, team_name):
+    st.header(f"📈 {team_name} Team Skill Analytics")
+    df = st.session_state[df_key]
+    
+    exclude_cols = ['Name', 'Designation', 'Team/Project']
+    skill_cols = [col for col in df.columns if col not in exclude_cols]
+    
+    if not skill_cols:
+        st.info("No skills available to analyze.")
+        return
+
+    # Ensure numeric for calculations
+    numeric_df = df.copy()
+    for col in skill_cols:
+        numeric_df[col] = pd.to_numeric(numeric_df[col], errors='coerce').fillna(0)
+        
+    # --- 1. Average Skill-wise Score ---
+    st.subheader("1. Average Skill-wise Score")
+    avg_skills = numeric_df[skill_cols].mean().round(2).reset_index()
+    avg_skills.columns = ['Skill', 'Average Score']
+    st.bar_chart(avg_skills.set_index('Skill'), color="#4472C4")
+    
+    st.divider()
+    
+    # --- 2. Skill Wise People Score ---
+    st.subheader("2. Skill-wise People Score")
+    selected_skill = st.selectbox(f"Select a Skill to view all {team_name} member scores:", skill_cols)
+    
+    # Filter and sort data for the selected skill
+    skill_scores_df = numeric_df[['Name', selected_skill]].sort_values(by=selected_skill, ascending=False)
+    
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.dataframe(skill_scores_df, hide_index=True, use_container_width=True)
+    with col2:
+        st.bar_chart(skill_scores_df.set_index('Name'), color="#63BE7B")
+        
+    st.divider()
+
+    # --- 3. Top 3 Performers per Skill ---
+    st.subheader("3. Top 3 Performers per Skill")
+    top3_list = []
+    for skill in skill_cols:
+        sorted_df = numeric_df[['Name', skill]].sort_values(by=skill, ascending=False)
+        sorted_df = sorted_df[sorted_df[skill] > 0] # Exclude 0 scores
+        
+        names = sorted_df['Name'].tolist()
+        scores = sorted_df[skill].tolist()
+        
+        top1 = f"{names[0]} ({scores[0]})" if len(names) > 0 else "-"
+        top2 = f"{names[1]} ({scores[1]})" if len(names) > 1 else "-"
+        top3 = f"{names[2]} ({scores[2]})" if len(names) > 2 else "-"
+        
+        top3_list.append({"Skill": skill, "1st Place": top1, "2nd Place": top2, "3rd Place": top3})
+        
+    st.dataframe(pd.DataFrame(top3_list), hide_index=True, use_container_width=True)
+    
+    st.divider()
+
+    # --- 4. Zero Skill Details ---
+    st.subheader("4. Zero Skill Details (Score = 0)")
+    zero_list = []
+    for skill in skill_cols:
+        zero_members = numeric_df[numeric_df[skill] == 0]['Name'].tolist()
+        if zero_members:
+            zero_list.append({
+                "Skill": skill, 
+                "Zero Score Count": len(zero_members),
+                "Members with 0 Score": ", ".join(zero_members)
+            })
+    
+    if zero_list:
+        st.dataframe(pd.DataFrame(zero_list), hide_index=True, use_container_width=True)
+    else:
+        st.success("Great job! No one has a zero score in any skill.")
+
+
+# --- DETERMINE VIEW BASED ON ROLE ---
+
+if st.session_state['team_access'] == 'All':
+    tab1, tab2, tab3 = st.tabs(["📝 Master Editor", "📊 Global Heatmaps", "📈 Skill Analytics"])
+    
+    with tab1:
+        st.header("Master Team Matrix Editor")
+        selected_team = st.selectbox("Select Team to Edit:", options=["QA", "UI/UX", "Dev"], index=0)
+        st.divider()
+        
+        if selected_team == "QA":
+            display_team_matrix("QA", 'qa_data')
+            display_admin_controls("QA", 'qa_data')
+        elif selected_team == "UI/UX":
+            display_team_matrix("UI/UX", 'uiux_data')
+            display_admin_controls("UI/UX", 'uiux_data')
+        elif selected_team == "Dev":
+            display_team_matrix("Dev", 'dev_data')
+            display_admin_controls("Dev", 'dev_data')
+            
+    with tab2:
+        st.header("Global Heatmaps")
+        st.markdown("🔴 **0-1**: Beginner | 🟡 **2**: Intermediate | 🟢 **3-4**: Proficient/Expert")
+        st.subheader("QA Heatmap")
+        render_heatmap('qa_data')
+        st.subheader("UI/UX Heatmap")
+        render_heatmap('uiux_data')
+        st.subheader("Dev Heatmap")
+        render_heatmap('dev_data')
+        
+    with tab3:
+        analytics_team = st.selectbox("Select Team for Analytics:", options=["QA", "UI/UX", "Dev"], index=0)
+        st.divider()
+        if analytics_team == "QA":
+            render_skill_analytics('qa_data', "QA")
+        elif analytics_team == "UI/UX":
+            render_skill_analytics('uiux_data', "UI/UX")
+        elif analytics_team == "Dev":
+            render_skill_analytics('dev_data', "Dev")
+
+# Role specific views
+elif st.session_state['team_access'] == 'QA':
+    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
+    with tab1:
+        st.info("You are editing the Canyon QA Team Skill Matrix.")
+        display_team_matrix("QA", 'qa_data')
+    with tab2:
+        render_skill_analytics('qa_data', "QA")
+
+elif st.session_state['team_access'] == 'UIUX':
+    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
+    with tab1:
+        st.info("You are editing the Canyon UI/UX Team Skill Matrix.")
+        display_team_matrix("UI/UX", 'uiux_data')
+    with tab2:
+        render_skill_analytics('uiux_data', "UI/UX")
+
+elif st.session_state['team_access'] == 'Dev':
+    tab1, tab2 = st.tabs(["📝 Update Matrix", "📈 Skill Analytics"])
+    with tab1:
+        st.info("You are editing the Canyon Dev Team Skill Matrix.")
+        display_team_matrix("Dev", 'dev_data')
+    with tab2:
+        render_skill_analytics('dev_data', "Dev")
