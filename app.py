@@ -3,9 +3,65 @@ import pandas as pd
 
 # 1. Page Configuration
 st.set_page_config(page_title="Skill Matrix", layout="wide")
+
+# --- DUMMY USER DATABASE ---
+# In a real app, you would use a database and hashed passwords.
+USERS = {
+    "admin": {"password": "admin123", "role": "admin"},
+    "employee": {"password": "user123", "role": "user"}
+}
+
+# --- AUTHENTICATION STATE ---
+if 'authenticated' not in st.session_state:
+    st.session_state['authenticated'] = False
+    st.session_state['role'] = None
+    st.session_state['username'] = None
+
+# --- LOGIN PAGE ---
+if not st.session_state['authenticated']:
+    st.title("🔐 Login to Skill Matrix")
+    st.write("Please log in to continue.")
+    st.markdown("""
+    **Test Credentials:**
+    * **Admin Account:** Username: `admin` | Password: `admin123` (Can see Heatmap)
+    * **User Account:** Username: `employee` | Password: `user123` (Cannot see Heatmap)
+    """)
+    
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submit = st.form_submit_button("Login")
+
+        if submit:
+            user_info = USERS.get(username)
+            if user_info and user_info['password'] == password:
+                st.session_state['authenticated'] = True
+                st.session_state['role'] = user_info['role']
+                st.session_state['username'] = username
+                st.rerun() # Refresh the page to load the main app
+            else:
+                st.error("Invalid username or password")
+    
+    # Stop the script here so the rest of the app doesn't load if not logged in
+    st.stop()
+
+
+# --- MAIN APP (Only runs if authenticated) ---
+
+# Sidebar for Logout and User Info
+st.sidebar.title("Profile")
+st.sidebar.write(f"**Logged in as:** {st.session_state['username']}")
+st.sidebar.write(f"**Role:** {st.session_state['role'].capitalize()}")
+
+if st.sidebar.button("Logout"):
+    st.session_state['authenticated'] = False
+    st.session_state['role'] = None
+    st.session_state['username'] = None
+    st.rerun()
+
 st.title("Interactive Skill Matrix")
 
-# 2. Initialize Data in Session State
+# Initialize Data in Session State
 if 'skill_data' not in st.session_state:
     data = {
         'Name': ['Prem', 'Arun Menon', 'Rambabu', 'SaiHari', 'Prathap', 'Aravind', 'Ronald'],
@@ -30,43 +86,43 @@ if 'skill_data' not in st.session_state:
     }
     st.session_state['skill_data'] = pd.DataFrame(data)
 
-# Create two distinct pages/tabs
-tab1, tab2 = st.tabs(["📝 Data Entry & Definitions", "📊 Heatmap Dashboard"])
+# --- ROLE-BASED TAB DISPLAY ---
+# If admin, show both tabs. If user, only show the first tab.
+if st.session_state['role'] == 'admin':
+    tabs = st.tabs(["📝 Data Entry & Definitions", "📊 Heatmap Dashboard"])
+    tab1 = tabs[0]
+    tab2 = tabs[1]
+else:
+    tabs = st.tabs(["📝 Data Entry & Definitions"])
+    tab1 = tabs[0]
+    tab2 = None # No tab 2 for standard users
 
 with tab1:
     st.header("Skill Level Definitions")
-    
-    # Replicating your ReadMe definitions
     st.markdown("""
     | Score | Skill Level | Description |
     | :--- | :--- | :--- |
-    | **4** | **Expert** | Fully Capable & Experienced. Sought for help by other departments. Needs no assistance. |
-    | **3** | **Proficient** | Capable & Experienced. Able to work independently with little help. |
-    | **2** | **Intermediate** | Able to perform. Has some experience. Needs help from time to time. |
-    | **1** | **Beginner** | Limited Knowledge. Cannot work on critical tasks. Needs significant help. |
+    | **4** | **Expert** | Fully Capable & Experienced. Needs no assistance. |
+    | **3** | **Proficient** | Capable & Experienced. Able to work independently. |
+    | **2** | **Intermediate** | Able to perform. Needs help from time to time. |
+    | **1** | **Beginner** | Limited Knowledge. Needs significant help. |
     | **0** | **No Knowledge** | No knowledge & Experience. |
     """)
     
     st.divider()
     st.subheader("Update Team Scores")
-    st.write("Edit the scores below using the dropdowns. Your changes will immediately reflect on the Heatmap tab.")
     
     df = st.session_state['skill_data']
     skill_cols = [col for col in df.columns if col not in ['Name', 'Designation']]
 
-    # Setup dropdowns for 0-4
     column_config = {
         col: st.column_config.SelectboxColumn(
-            col,
-            help=f"Select score (0 to 4)",
-            options=[0, 1, 2, 3, 4],
-            required=True
-        )
-        for col in skill_cols
+            col, help="Select score (0 to 4)", options=[0, 1, 2, 3, 4], required=True
+        ) for col in skill_cols
     }
 
-    # Data editor UI
-    edited_df = st.data_editor(
+    # Save edits directly back to session state so they persist
+    st.session_state['skill_data'] = st.data_editor(
         df, 
         column_config=column_config, 
         hide_index=True,
@@ -74,24 +130,22 @@ with tab1:
         height=300
     )
 
-with tab2:
-    st.header("Team Heatmap")
-    st.markdown("🔴 **0-1**: Beginner/No Knowledge | 🟡 **2**: Intermediate | 🟢 **3-4**: Proficient/Expert")
-    
-    # Prepare data for heatmap
-    heatmap_data = edited_df.set_index('Name').drop(columns=['Designation'])
+# Only attempt to render the Heatmap tab if the user is an admin
+if tab2 is not None:
+    with tab2:
+        st.header("Team Heatmap (Admin View)")
+        st.markdown("🔴 **0-1**: Beginner | 🟡 **2**: Intermediate | 🟢 **3-4**: Proficient/Expert")
+        
+        heatmap_data = st.session_state['skill_data'].set_index('Name').drop(columns=['Designation'])
 
-    # Apply the traffic-light color logic directly to the dataframe
-    def apply_color_logic(val):
-        if val in [0, 1]:
-            return 'background-color: #F8696B; color: black; font-weight: bold;' # Red
-        elif val == 2:
-            return 'background-color: #FFEB84; color: black; font-weight: bold;' # Yellow
-        elif val in [3, 4]:
-            return 'background-color: #63BE7B; color: black; font-weight: bold;' # Green
-        return ''
+        def apply_color_logic(val):
+            if val in [0, 1]:
+                return 'background-color: #F8696B; color: black; font-weight: bold;'
+            elif val == 2:
+                return 'background-color: #FFEB84; color: black; font-weight: bold;'
+            elif val in [3, 4]:
+                return 'background-color: #63BE7B; color: black; font-weight: bold;'
+            return ''
 
-    styled_heatmap = heatmap_data.style.map(apply_color_logic)
-
-    # Display the heatmap
-    st.dataframe(styled_heatmap, use_container_width=True, height=400)
+        styled_heatmap = heatmap_data.style.map(apply_color_logic)
+        st.dataframe(styled_heatmap, use_container_width=True, height=400)
