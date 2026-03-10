@@ -237,8 +237,8 @@ def display_admin_controls(team_name, df_key):
 def render_heatmap(df_key):
     df = st.session_state[df_key]
     
-    drop_cols = [col for col in ['Designation', 'Team/Project'] if col in df.columns]
-    heatmap_data = df.drop(columns=drop_cols)
+    # Safely drop columns using errors='ignore' so it never crashes even if columns are missing
+    heatmap_data = df.drop(columns=['Designation', 'Team/Project'], errors='ignore')
     skill_cols = [col for col in heatmap_data.columns if col != 'Name']
 
     def apply_color_logic(val):
