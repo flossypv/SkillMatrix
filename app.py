@@ -338,7 +338,7 @@ try:
                         )
 
         # -------------------------------------------------------------------
-        # VIEW 2: SKILL ANALYTICS 
+        # VIEW 2: SKILL ANALYTICS
         # -------------------------------------------------------------------
         elif selected_tab == "📈 Analytics":
             if teams_list:
@@ -530,28 +530,21 @@ try:
                     *⚠️ **Note:** If you edit an existing skill's name, the system will treat it as a brand new skill, and all previous scores for it will be reset to 0.*
                     """)
                     
-                    # Create a rich representation of skills to make the table look good
                     current_skills = [c for c in df.columns if c not in ['Name', 'Designation']]
                     skill_data = []
                     
                     for s in current_skills:
-                        # Calculate some basic stats to fill out the table
                         active_users = int((pd.to_numeric(df[s], errors='coerce').fillna(0) > 0).sum()) if not df.empty else 0
-                        avg_score = round(pd.to_numeric(df[s], errors='coerce').fillna(0).mean(), 1) if not df.empty else 0.0
-                        
                         skill_data.append({
                             "Skill Category": s,
-                            "Active Team Members": active_users,
-                            "Avg Score": avg_score
+                            "Active Team Members": active_users
                         })
                         
-                    skills_df = pd.DataFrame(skill_data) if skill_data else pd.DataFrame(columns=["Skill Category", "Active Team Members", "Avg Score"])
+                    skills_df = pd.DataFrame(skill_data) if skill_data else pd.DataFrame(columns=["Skill Category", "Active Team Members"])
                     
-                    # Configure columns so the user can only edit the Name, but can see the nice stats
                     col_cfg = {
                         "Skill Category": st.column_config.TextColumn("Skill Category", required=True),
-                        "Active Team Members": st.column_config.NumberColumn("Active Team Members (Read-Only)", disabled=True),
-                        "Avg Score": st.column_config.NumberColumn("Avg Score (Read-Only)", disabled=True)
+                        "Active Team Members": st.column_config.NumberColumn("Active Team Members (Read-Only)", disabled=True)
                     }
                     
                     edited_skills = st.data_editor(
