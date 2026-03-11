@@ -78,7 +78,7 @@ def load_credentials():
 
 def add_credential(username, password, role, team, dept):
     creds_df = load_credentials()
-    if username in creds_df['Username'].values:
+    if username in creds_df['Username'].astype(str).values:
         return False
     
     new_user = pd.DataFrame([{"Username": username, "Password": password, "Role": role, "Team": team, "Department": dept}])
@@ -88,7 +88,7 @@ def add_credential(username, password, role, team, dept):
 
 def delete_credential(username):
     creds_df = load_credentials()
-    updated_creds = creds_df[creds_df['Username'] != username]
+    updated_creds = creds_df[creds_df['Username'].astype(str) != str(username)]
     conn.update(worksheet="Credentials", data=updated_creds)
 
 
@@ -105,10 +105,10 @@ def load_directory():
         return default_dir
 
 def get_sheet_name(team, dept):
-    return team if dept == "None" else f"{team}_{dept}"
+    return str(team) if str(dept) == "None" else f"{team}_{dept}"
 
 def get_display_name(team, dept):
-    return team if dept == "None" else f"{team} - {dept}"
+    return str(team) if str(dept) == "None" else f"{team} - {dept}"
 
 def load_matrix(team, dept):
     sheet_name = get_sheet_name(team, dept)
@@ -116,9 +116,9 @@ def load_matrix(team, dept):
         df = conn.read(worksheet=sheet_name, ttl=0).dropna(how='all', axis=1).dropna(how='all', axis=0)
         if df.empty: raise Exception("Empty Matrix")
     except Exception:
-        if team == "Canyon" and dept == "QA": df = pd.DataFrame(default_qa)
-        elif team == "Canyon" and dept == "UIUX": df = pd.DataFrame(default_uiux)
-        elif team == "Canyon" and dept == "Dev": df = pd.DataFrame(default_dev)
+        if str(team) == "Canyon" and str(dept) == "QA": df = pd.DataFrame(default_qa)
+        elif str(team) == "Canyon" and str(dept) == "UIUX": df = pd.DataFrame(default_uiux)
+        elif str(team) == "Canyon" and str(dept) == "Dev": df = pd.DataFrame(default_dev)
         else: df = pd.DataFrame(columns=['Name', 'Designation'])
         
         ensure_worksheet_exists(sheet_name)
@@ -136,8 +136,8 @@ def save_matrix(team, dept, df):
 
 def add_to_directory(team, dept):
     dir_df = load_directory()
-    if not ((dir_df['Team'] == team) & (dir_df['Department'] == dept)).any():
-        new_row = pd.DataFrame([{"Team": team, "Department": dept}])
+    if not ((dir_df['Team'].astype(str) == str(team)) & (dir_df['Department'].astype(str) == str(dept))).any():
+        new_row = pd.DataFrame([{"Team": str(team), "Department": str(dept)}])
         updated_dir = pd.concat([dir_df, new_row], ignore_index=True)
         conn.update(worksheet="Directory", data=updated_dir)
         
@@ -148,7 +148,7 @@ def add_to_directory(team, dept):
 
 def delete_from_directory(team, dept):
     dir_df = load_directory()
-    updated_dir = dir_df[~((dir_df['Team'] == team) & (dir_df['Department'] == dept))]
+    updated_dir = dir_df[~((dir_df['Team'].astype(str) == str(team)) & (dir_df['Department'].astype(str) == str(dept)))]
     conn.update(worksheet="Directory", data=updated_dir)
 
 
@@ -172,14 +172,14 @@ if not st.session_state['authenticated']:
 
         if submit:
             creds_df = load_credentials()
-            user_row = creds_df[creds_df['Username'] == username]
+            user_row = creds_df[creds_df['Username'].astype(str) == str(username)]
             
             if not user_row.empty and str(user_row.iloc[0]['Password']) == password:
                 st.session_state['authenticated'] = True
-                st.session_state['role'] = user_row.iloc[0]['Role']
-                st.session_state['username'] = username
-                st.session_state['team_access'] = user_row.iloc[0]['Team']
-                st.session_state['dept_access'] = user_row.iloc[0]['Department']
+                st.session_state['role'] = str(user_row.iloc[0]['Role'])
+                st.session_state['username'] = str(username)
+                st.session_state['team_access'] = str(user_row.iloc[0]['Team'])
+                st.session_state['dept_access'] = str(user_row.iloc[0]['Department'])
                 st.rerun()
             else:
                 st.error("Invalid username or password")
@@ -374,11 +374,17 @@ if role in ['superadmin', 'admin']:
     directory_df = load_directory()
     creds_df = load_credentials()
     
-    # Restrict teams list based on access level
+    # Restrict teams list based on access level (FORCE STRINGS to prevent TypeErrors)
+    directory_df['Team'] = directory_df['Team'].astype(str)
+    directory_df['Department'] = directory_df['Department'].astype(str)
+    creds_df['Team'] = creds_df['Team'].astype(str)
+    creds_df['Department'] = creds_df['Department'].astype(str)
+    creds_df['Role'] = creds_df['Role'].astype(str)
+    
     if role == 'superadmin':
         teams_list = directory_df['Team'].unique().tolist()
     else:
-        teams_list = [my_team] if my_team in directory_df['Team'].unique().tolist() else []
+        teams_list = [my_team] if my_team in directory_df['Team'].tolist() else []
 
     # Create the 5 Main Tabs
     t_edit, t_dash, t_stat, t_hier, t_cred = st.tabs([
@@ -405,7 +411,7 @@ if role in ['superadmin', 'admin']:
             if "None" in depts_list and len(depts_list) == 1:
                 selected_dept = "None"
             else:
-                selected_dept = colB.selectbox("Select Department:", [d for d in depts_list if d != "None"])
+                selected_dept = colB.selectbox("Select Department:", sorted([d for d in depts_list if d != "None"]))
             
             if selected_team and selected_dept:
                 state_key = f"data_{selected_team}_{selected_dept}"
@@ -435,7 +441,7 @@ if role in ['superadmin', 'admin']:
             if "None" in hm_depts and len(hm_depts) == 1:
                 hm_dept = "None"
             else:
-                hm_dept = colB_hm.selectbox("Select Department for Dashboard:", [d for d in hm_depts if d != "None"], key="hm_dept")
+                hm_dept = colB_hm.selectbox("Select Department for Dashboard:", sorted([d for d in hm_depts if d != "None"]), key="hm_dept")
             
             st.divider()
             if hm_team and hm_dept:
@@ -456,7 +462,7 @@ if role in ['superadmin', 'admin']:
             if "None" in an_depts and len(an_depts) == 1:
                 an_dept = "None"
             else:
-                an_dept = colB_an.selectbox("Select Department for Analytics:", [d for d in an_depts if d != "None"], key="an_dept")
+                an_dept = colB_an.selectbox("Select Department for Analytics:", sorted([d for d in an_depts if d != "None"]), key="an_dept")
             
             st.divider()
             if an_team and an_dept:
@@ -468,10 +474,8 @@ if role in ['superadmin', 'admin']:
         if role == 'superadmin':
             st.write("Create a new organizational structure. If the Team already exists, type it exactly as it appears to add a new department to it.")
             
-            # The Radio button is OUTSIDE the form so it changes the UI dynamically
             has_dept = st.radio("Does this Team have departments?", ["No, just a Team", "Yes, Team with Departments"])
             
-            # The text inputs are INSIDE the form to prevent "saving while typing"
             with st.form("new_hierarchy_form", clear_on_submit=True):
                 new_t_name = st.text_input("Team Name (e.g., 'Apollo')")
                 new_d_name = st.text_input("Department Name (e.g., 'Backend')") if has_dept == "Yes, Team with Departments" else "None"
@@ -485,14 +489,12 @@ if role in ['superadmin', 'admin']:
             
             st.divider()
             st.subheader("🗑️ Delete Structure")
-            
-            # Use columns and selectboxes outside a form for dynamic filtering
             col_del1, col_del2 = st.columns(2)
-            del_team = col_del1.selectbox("Select Team to Delete", directory_df['Team'].unique().tolist(), key="del_team")
+            del_team = col_del1.selectbox("Select Team to Delete", teams_list, key="del_team")
             
             if del_team:
                 del_depts = directory_df[directory_df['Team'] == del_team]['Department'].tolist()
-                del_dept = col_del2.selectbox("Select Department to Delete", del_depts, key="del_dept")
+                del_dept = col_del2.selectbox("Select Department to Delete", sorted(del_depts), key="del_dept")
                 
                 if st.button("❌ Delete Selection", type="secondary"):
                     delete_from_directory(del_team, del_dept)
@@ -513,7 +515,7 @@ if role in ['superadmin', 'admin']:
     with t_cred:
         st.header("Setup New User Credential")
         
-        show_form = True # Flag to control visibility of username/password fields
+        show_form = True 
         c_team, c_dept = None, None
         
         if role == 'superadmin':
@@ -541,8 +543,7 @@ if role in ['superadmin', 'admin']:
                         
             elif c_role == "admin":
                 existing_admins = creds_df[creds_df['Role'] == 'admin']['Team'].tolist()
-                all_teams = directory_df['Team'].unique().tolist()
-                available_teams = [t for t in all_teams if t not in existing_admins]
+                available_teams = sorted([t for t in teams_list if t not in existing_admins])
                 
                 if not available_teams:
                     st.warning("All Teams already have an admin credential assigned.")
@@ -561,7 +562,7 @@ if role in ['superadmin', 'admin']:
             c_team = my_team
             existing_editors = creds_df[(creds_df['Role'] == 'editor') & (creds_df['Team'] == my_team)]['Department'].tolist()
             all_depts = directory_df[directory_df['Team'] == my_team]['Department'].tolist()
-            available_depts = [d for d in all_depts if d not in existing_editors]
+            available_depts = sorted([d for d in all_depts if d not in existing_editors])
             
             if not available_depts:
                 st.warning(f"All departments in {my_team} already have editor credentials assigned.")
