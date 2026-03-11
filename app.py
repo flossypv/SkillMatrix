@@ -8,7 +8,7 @@ import time
 # ==========================================
 # 1. PAGE CONFIGURATION
 # ==========================================
-st.set_page_config(page_title="SkillMatrix", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="UBTI Skill Matrix", layout="wide", initial_sidebar_state="expanded")
 
 # ==========================================
 # 2. DATABASE SETUP (GOOGLE SHEETS)
@@ -160,7 +160,8 @@ if not st.session_state['authenticated']:
     col_info, col_divider, col_login = st.columns([1.3, 0.1, 0.9])
     
     with col_info:
-        st.markdown("# 🚀 AppDevelopment SkillMatrix")
+        # --- Updated Header ---
+        st.markdown("# 🎯 UBTI Skill Matrix")
         st.markdown("### Empowering Teams Through Skill Tracking")
         st.write("Track, analyze, and manage your organization's capabilities securely with our dynamic dashboard.")
         st.markdown("---")
@@ -328,7 +329,7 @@ try:
                         )
 
         # -------------------------------------------------------------------
-        # VIEW 2: SKILL ANALYTICS (TABBED WITH CSV EXPORT)
+        # VIEW 2: SKILL ANALYTICS
         # -------------------------------------------------------------------
         elif selected_tab == "📈 Analytics":
             if teams_list:
@@ -400,11 +401,10 @@ try:
                             with c2:
                                 st.bar_chart(person_data.set_index('Skill'), color="#3498db", use_container_width=True)
 
-                        # --- TAB 3: ZERO SKILL ANALYSIS (WITH CSV EXPORT) ---
+                        # --- TAB 3: ZERO SKILL ANALYSIS ---
                         with tab_gaps:
                             st.subheader("⚠️ Missing Skills & Cross-Training")
                             
-                            # Team-wide Skill Gaps
                             zero_skills = [s for s in sk_cols if num_df[s].sum() == 0]
                             if zero_skills:
                                 st.error(f"**🚨 Critical Team Gaps (No one has > 0 score):**\n\n" + ", ".join(zero_skills))
@@ -414,7 +414,6 @@ try:
                             st.divider()
                             st.markdown("#### 📋 Members Requiring Training by Skill")
                             
-                            # Consolidate all zero-score members into one table
                             zero_skill_data = []
                             for s in sk_cols:
                                 zero_people = num_df[num_df[s] == 0]['Name'].tolist()
@@ -428,7 +427,6 @@ try:
                                 gap_df = pd.DataFrame(zero_skill_data)
                                 st.dataframe(gap_df, hide_index=True, use_container_width=True)
                                 
-                                # Convert DF to CSV for download
                                 gap_csv = gap_df.to_csv(index=False).encode('utf-8')
                                 st.download_button(
                                     label="📥 Download Gap Analysis (CSV)",
@@ -677,10 +675,11 @@ try:
                     st.rerun()
 
     # -------------------------------------------------------------------
-    # EDITOR ROLE VIEW
+    # EDITOR ROLE VIEW (Updated Header)
     # -------------------------------------------------------------------
     else:
-        st.markdown(f"**Welcome to AppDevelopment SkillMatrix.**")
+        # --- Updated Generic Header for Editors ---
+        st.markdown(f"**Welcome to the UBTI Skill Matrix.**")
         st.write(f"You are currently contributing to the {get_display_name(my_team, my_dept)} Skill Matrix.")
         state_key = f"data_{my_team}_{my_dept}"
         
