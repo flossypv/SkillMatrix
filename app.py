@@ -10,6 +10,16 @@ import time
 # ==========================================
 st.set_page_config(page_title="UBTI Skill Matrix", layout="wide", initial_sidebar_state="expanded")
 
+# --- Helper Function for Bold, Clean Headers ---
+def style_table(df):
+    """Applies a bold header with NO colors and hides the index"""
+    return df.style.hide(axis="index").set_table_styles(
+        [
+            {"selector": "th", "props": [("font-weight", "900 !important"), ("color", "black"), ("font-size", "15px"), ("border-bottom", "2px solid black")]},
+            {"selector": "td", "props": [("padding", "8px"), ("border-bottom", "1px solid #ddd")]}
+        ]
+    )
+
 # ==========================================
 # 2. DATABASE SETUP (GOOGLE SHEETS)
 # ==========================================
@@ -328,7 +338,7 @@ try:
                         )
 
         # -------------------------------------------------------------------
-        # VIEW 2: SKILL ANALYTICS
+        # VIEW 2: SKILL ANALYTICS (TABBED WITH CUSTOM STYLING)
         # -------------------------------------------------------------------
         elif selected_tab == "📈 Analytics":
             if teams_list:
@@ -376,14 +386,14 @@ try:
                                 n = sorted_d['Name'].tolist()
                                 sc = sorted_d[s].tolist()
                                 t3.append({
-                                    "Skill": s, 
+                                    "Skill Category": s, 
                                     "🥇 1st Place": f"{n[0]} ({sc[0]})" if len(n)>0 else "-", 
                                     "🥈 2nd Place": f"{n[1]} ({sc[1]})" if len(n)>1 else "-",
                                     "🥉 3rd Place": f"{n[2]} ({sc[2]})" if len(n)>2 else "-"
                                 })
                             
-                            # Using Streamlit's native dataframe for bold headers & no colors
-                            st.dataframe(pd.DataFrame(t3), hide_index=True, use_container_width=True)
+                            df_t3 = pd.DataFrame(t3)
+                            st.table(style_table(df_t3))
 
                         # --- TAB 2: INDIVIDUAL PROFILES ---
                         with tab_person:
@@ -397,11 +407,11 @@ try:
                             c1, c2 = st.columns([1, 2])
                             with c1:
                                 active_skills = person_data[person_data['Score'] > 0]
-                                st.dataframe(active_skills, hide_index=True, use_container_width=True)
+                                st.table(style_table(active_skills))
                             with c2:
                                 st.bar_chart(person_data.set_index('Skill'), color="#3498db", use_container_width=True)
 
-                        # --- TAB 3: ZERO SKILL ANALYSIS (WITH CSV EXPORT) ---
+                        # --- TAB 3: ZERO SKILL ANALYSIS (WITH CSV EXPORT & STYLING) ---
                         with tab_gaps:
                             st.subheader("⚠️ Missing Skills & Cross-Training")
                             
@@ -425,8 +435,7 @@ try:
                                     
                             if zero_skill_data:
                                 gap_df = pd.DataFrame(zero_skill_data)
-                                # Using Streamlit's native dataframe for bold headers & no colors
-                                st.dataframe(gap_df, hide_index=True, use_container_width=True)
+                                st.table(style_table(gap_df))
                                 
                                 gap_csv = gap_df.to_csv(index=False).encode('utf-8')
                                 st.download_button(
@@ -464,7 +473,7 @@ try:
             else: st.warning("No Teams found. Please create one.")
                 
         # -------------------------------------------------------------------
-        # VIEW 4: MEMBERS
+        # VIEW 4: MEMBERS (NOW WITH INLINE DATA EDITOR)
         # -------------------------------------------------------------------
         elif selected_tab == "👤 Members":
             if teams_list:
@@ -474,44 +483,39 @@ try:
                     if state_key not in st.session_state: st.session_state[state_key] = load_matrix(sel_t, sel_d)
                     df = st.session_state[state_key]
                     
-                    # Top Row: Add / Remove Actions
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown("#### ➕ Add Member")
-                        with st.form(f"add_mem_{sel_t}_{sel_d}", clear_on_submit=True):
-                            new_name = st.text_input("Name")
-                            new_desig = st.text_input("Designation")
-                            if st.form_submit_button("Add Member") and new_name:
-                                new_row = {'Name': new_name, 'Designation': new_desig}
-                                for c in df.columns: 
-                                    if c not in ['Name', 'Designation']: new_row[c] = 0
-                                updated_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-                                st.session_state[state_key] = updated_df
-                                save_matrix(sel_t, sel_d, updated_df)
-                                st.session_state['flash_msg'] = f"Added {new_name}!"
-                                time.sleep(1)
-                                st.rerun()
-                    with col2:
-                        st.markdown("#### ❌ Remove Member")
-                        with st.form(f"del_mem_{sel_t}_{sel_d}"):
-                            mem_to_del = st.selectbox("Select Member", df['Name'].tolist()) if 'Name' in df.columns and not df.empty else None
-                            if st.form_submit_button("Delete Member") and mem_to_del:
-                                updated_df = df[df['Name'] != mem_to_del].reset_index(drop=True)
-                                st.session_state[state_key] = updated_df
-                                save_matrix(sel_t, sel_d, updated_df)
-                                st.session_state['flash_msg'] = f"Deleted {mem_to_del}."
-                                time.sleep(1)
-                                st.rerun()
-
-                    # Bottom Section: Display current team members
-                    st.divider()
-                    st.subheader(f"📋 Current Members ({sel_t} - {sel_d})")
-                    if not df.empty and 'Name' in df.columns:
-                        mem_df = df[['Name', 'Designation']]
-                        # Using Streamlit's native dataframe for bold headers & no colors
-                        st.dataframe(mem_df, hide_index=True, use_container_width=True)
-                    else:
-                        st.info("No members found in this team/department.")
+                    st.subheader(f"📋 Manage Members ({sel_t} - {sel_d})")
+                    st.write("Add, edit, or delete members directly in the table below. Click **Save Changes** when done.")
+                    
+                    # Extract just Name and Designation for easy editing
+                    mem_df = df[['Name', 'Designation']].copy()
+                    
+                    edited_mem = st.data_editor(
+                        mem_df, 
+                        num_rows="dynamic", 
+                        hide_index=True,
+                        use_container_width=True, 
+                        key=f"mem_editor_{sel_t}_{sel_d}"
+                    )
+                    
+                    if st.button("💾 Save Member Changes", type="primary"):
+                        # Remove completely empty rows
+                        edited_mem = edited_mem.dropna(subset=['Name'])
+                        edited_mem = edited_mem[edited_mem['Name'].astype(str).str.strip() != ""]
+                        
+                        # Reconstruct the full matrix with existing skills
+                        new_df = edited_mem.copy()
+                        skill_cols = [c for c in df.columns if c not in ['Name', 'Designation']]
+                        
+                        for sc in skill_cols:
+                            # Map old scores to existing members based on Name. Default new members to 0.
+                            score_map = df.set_index('Name')[sc].to_dict()
+                            new_df[sc] = new_df['Name'].map(score_map).fillna(0).astype(int)
+                            
+                        st.session_state[state_key] = new_df
+                        save_matrix(sel_t, sel_d, new_df)
+                        st.session_state['flash_msg'] = "Members updated successfully!"
+                        time.sleep(1)
+                        st.rerun()
 
         # -------------------------------------------------------------------
         # VIEW 5: SKILLS
