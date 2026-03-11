@@ -5,7 +5,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # 1. Page Configuration
-st.set_page_config(page_title="Canyon SkillMatrix", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="SkillMatrix Dashboard", layout="wide", initial_sidebar_state="expanded")
 
 # --- DATABASE SETUP (GOOGLE SHEETS) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -163,27 +163,33 @@ if 'authenticated' not in st.session_state:
 # --- BEAUTIFUL LOGIN PAGE ---
 if not st.session_state['authenticated']:
     # Use columns to split the page: 55% left, 10% spacing, 35% right
-    col_info, col_space, col_login = st.columns([1.3, 0.2, 0.9])
+    col_info, col_space, col_login = st.columns([1.3, 0.1, 0.9])
     
     with col_info:
-        st.title("Canyon SkillMatrix 🚀")
-        st.markdown("""
-        #### Empowering Teams Through Skill Tracking
-        Track, analyze, and manage your organization's capabilities securely with our dynamic dashboard.
+        st.markdown("# 🚀 SkillMatrix")
+        st.markdown("### Empowering Teams Through Skill Tracking")
+        st.write("Track, analyze, and manage your organization's capabilities securely with our dynamic dashboard.")
         
-        * 📊 **Interactive Heatmaps:** Instantly spot skill gaps and strengths.
-        * 📈 **Deep Analytics:** Identify top performers and training opportunities.
-        * 🏢 **Custom Hierarchies:** Tailor the matrix to your exact team structure.
-        * 🔐 **Role-Based Access:** Secure, specific views for Admins and Editors.
-        """)
-        st.write("") # small gap
-        # Add a nice open-source infographic image
-        st.image("https://images.unsplash.com/photo-1460925895917-afdab827c52f?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80", use_container_width=True)
+        st.markdown("---")
+        
+        # Create a visually appealing "Infographic" section using Streamlit columns & boxes
+        info1, info2 = st.columns(2)
+        with info1:
+            st.info("**📊 Interactive Heatmaps**\n\nInstantly spot skill gaps and strengths across your entire workforce.")
+            st.warning("**🏢 Custom Hierarchies**\n\nTailor the database exactly to your organizational structure.")
+        with info2:
+            st.success("**📈 Deep Analytics**\n\nIdentify top performers and targeted training opportunities.")
+            st.error("**🔐 Role-Based Access**\n\nSecure, specific views for Admins, Managers, and Editors.")
+            
+        st.markdown("---")
+        
+        # A more abstract, modern analytics image
+        st.image("https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80", use_container_width=True)
 
     with col_login:
         st.markdown("<br><br>", unsafe_allow_html=True) # Push the form down to align better
         st.subheader("🔐 Secure Login")
-        st.write("Please log in to manage your team.")
+        st.write("Please log in to access your dashboard.")
         
         with st.form("login_form"):
             username = st.text_input("Username")
@@ -206,7 +212,7 @@ if not st.session_state['authenticated']:
                 else:
                     st.error("Invalid username or password")
     
-    # Stop execution here so the rest of the app doesn't load
+    # Stop execution here so the rest of the app doesn't load until authenticated
     st.stop()
 
 
@@ -231,7 +237,11 @@ if st.sidebar.button("Logout"):
     st.session_state['dept_access'] = None
     st.rerun()
 
-st.title("Canyon SkillMatrix")
+# DYNAMIC TITLE BASED ON LOGIN
+if st.session_state['role'] == 'superadmin':
+    st.title("🌐 Enterprise SkillMatrix")
+else:
+    st.title(f"🏢 {st.session_state['team_access']} SkillMatrix")
 
 if 'flash_msg' in st.session_state:
     st.success(st.session_state['flash_msg'])
