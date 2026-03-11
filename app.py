@@ -338,7 +338,7 @@ try:
                         )
 
         # -------------------------------------------------------------------
-        # VIEW 2: SKILL ANALYTICS
+        # VIEW 2: SKILL ANALYTICS 
         # -------------------------------------------------------------------
         elif selected_tab == "📈 Analytics":
             if teams_list:
@@ -411,7 +411,7 @@ try:
                             with c2:
                                 st.bar_chart(person_data.set_index('Skill'), color="#3498db", use_container_width=True)
 
-                        # --- TAB 3: ZERO SKILL ANALYSIS ---
+                        # --- TAB 3: ZERO SKILL ANALYSIS (WITH CSV EXPORT) ---
                         with tab_gaps:
                             st.subheader("⚠️ Missing Skills & Cross-Training")
                             
@@ -486,7 +486,6 @@ try:
                     st.subheader(f"📋 Manage Members ({sel_t} - {sel_d})")
                     st.write("Add, edit, or delete members directly in the table below. Click **Save Changes** when done.")
                     
-                    # Extract just Name and Designation for easy editing
                     mem_df = df[['Name', 'Designation']].copy()
                     
                     edited_mem = st.data_editor(
@@ -498,16 +497,13 @@ try:
                     )
                     
                     if st.button("💾 Save Member Changes", type="primary"):
-                        # Remove completely empty rows
                         edited_mem = edited_mem.dropna(subset=['Name'])
                         edited_mem = edited_mem[edited_mem['Name'].astype(str).str.strip() != ""]
                         
-                        # Reconstruct the full matrix with existing skills
                         new_df = edited_mem.copy()
                         skill_cols = [c for c in df.columns if c not in ['Name', 'Designation']]
                         
                         for sc in skill_cols:
-                            # Map old scores to existing members based on Name. Default new members to 0.
                             score_map = df.set_index('Name')[sc].to_dict()
                             new_df[sc] = new_df['Name'].map(score_map).fillna(0).astype(int)
                             
@@ -518,7 +514,7 @@ try:
                         st.rerun()
 
         # -------------------------------------------------------------------
-        # VIEW 5: SKILLS (INLINE DATA EDITOR)
+        # VIEW 5: SKILLS (AESTHETIC RICH INLINE DATA EDITOR)
         # -------------------------------------------------------------------
         elif selected_tab == "🎯 Skills":
             if teams_list:
@@ -534,38 +530,53 @@ try:
                     *⚠️ **Note:** If you edit an existing skill's name, the system will treat it as a brand new skill, and all previous scores for it will be reset to 0.*
                     """)
                     
-                    # Extract current skills into a DataFrame for the editor
+                    # Create a rich representation of skills to make the table look good
                     current_skills = [c for c in df.columns if c not in ['Name', 'Designation']]
-                    skills_df = pd.DataFrame({"Skill Category": current_skills})
+                    skill_data = []
+                    
+                    for s in current_skills:
+                        # Calculate some basic stats to fill out the table
+                        active_users = int((pd.to_numeric(df[s], errors='coerce').fillna(0) > 0).sum()) if not df.empty else 0
+                        avg_score = round(pd.to_numeric(df[s], errors='coerce').fillna(0).mean(), 1) if not df.empty else 0.0
+                        
+                        skill_data.append({
+                            "Skill Category": s,
+                            "Active Team Members": active_users,
+                            "Avg Score": avg_score
+                        })
+                        
+                    skills_df = pd.DataFrame(skill_data) if skill_data else pd.DataFrame(columns=["Skill Category", "Active Team Members", "Avg Score"])
+                    
+                    # Configure columns so the user can only edit the Name, but can see the nice stats
+                    col_cfg = {
+                        "Skill Category": st.column_config.TextColumn("Skill Category", required=True),
+                        "Active Team Members": st.column_config.NumberColumn("Active Team Members (Read-Only)", disabled=True),
+                        "Avg Score": st.column_config.NumberColumn("Avg Score (Read-Only)", disabled=True)
+                    }
                     
                     edited_skills = st.data_editor(
                         skills_df,
                         num_rows="dynamic",
                         hide_index=True,
                         use_container_width=True,
+                        column_config=col_cfg,
                         key=f"skill_editor_{sel_t}_{sel_d}"
                     )
                     
                     if st.button("💾 Save Skill Changes", type="primary"):
-                        # Clean up the new skill list
-                        edited_skills = edited_skills.dropna()
+                        edited_skills = edited_skills.dropna(subset=['Skill Category'])
                         new_skill_list = edited_skills['Skill Category'].astype(str).str.strip().tolist()
                         new_skill_list = [s for s in new_skill_list if s != ""]
                         
-                        # Remove duplicates while preserving order
                         seen = set()
                         unique_new_skills = [x for x in new_skill_list if not (x in seen or seen.add(x))]
                         
-                        # Reconstruct the main dataframe
-                        # Always keep Name and Designation intact
                         new_df = df[['Name', 'Designation']].copy() if not df.empty else pd.DataFrame(columns=['Name', 'Designation'])
                         
                         for skill in unique_new_skills:
                             if skill in df.columns:
-                                # Keep existing scores for this skill
                                 new_df[skill] = df[skill]
                             else:
-                                # This is a brand new skill, default everyone to 0
                                 new_df[skill] = 0
                                 
                         st.session_state[state_key] = new_df
