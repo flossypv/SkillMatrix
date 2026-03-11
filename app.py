@@ -206,31 +206,68 @@ if not st.session_state['authenticated']:
 
 
 # ==========================================
-# --- GLOBAL VARIABLES & HEADER ---
+# --- GLOBAL VARIABLES ---
 # ==========================================
 role = st.session_state['role']
 my_team = st.session_state['team_access']
 my_dept = st.session_state['dept_access']
 username = st.session_state['username']
 
-# --- AESTHETIC WELCOME MESSAGE ---
-st.markdown(f"<h4 style='color: #2e66ff; font-weight: 500; margin-bottom: -15px;'>👋 Welcome back, {username}!</h4>", unsafe_allow_html=True)
+# ==========================================
+# --- SIDEBAR MENU & PROFILE ---
+# ==========================================
 
-# --- TOP HEADER & LOGOUT BUTTON ---
-col_title, col_profile = st.columns([8, 1])
+# 1. Welcome Message & Profile
+st.sidebar.markdown(f"### 👋 Welcome back, **{username}**!")
 
-with col_title:
-    st.title("🌐 Enterprise SkillMatrix" if role == 'superadmin' else f"🏢 {my_team} SkillMatrix")
+if role != 'superadmin':
+    team_context = f"**Team:** {my_team}"
+    if my_dept and my_dept != "None":
+        team_context += f" | **Dept:** {my_dept}"
+    st.sidebar.caption(team_context)
+else:
+    st.sidebar.caption("**Access:** Superadmin")
 
-with col_profile:
-    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
-    if st.button("🚪 Logout", use_container_width=True):
-        for key in ['authenticated', 'role', 'username', 'team_access', 'dept_access']: 
-            st.session_state[key] = None
-        if "admin_nav" in st.session_state: 
-            del st.session_state["admin_nav"]
-        st.rerun()
+# 2. Logout Button
+if st.sidebar.button("🚪 Logout", use_container_width=True):
+    for key in ['authenticated', 'role', 'username', 'team_access', 'dept_access']: 
+        st.session_state[key] = None
+    if "admin_nav" in st.session_state: 
+        del st.session_state["admin_nav"]
+    st.rerun()
 
+st.sidebar.divider()
+
+# 3. Main Navigation Menu
+st.sidebar.markdown("## 🧭 Menu")
+
+if role == 'superadmin':
+    nav_options = [
+        "📝 Matrix Editor", "👤 Members", "🎯 Skills", 
+        "📊 Dashboard", "📈 Analytics", "🏢 Hierarchy", "🔐 Credentials"
+    ]
+elif role == 'admin':
+    nav_options = [
+        "📝 Matrix Editor", "👤 Members", "🎯 Skills", 
+        "📊 Dashboard", "📈 Analytics", "🔐 Credentials"
+    ]
+else:
+    nav_options = []
+    st.sidebar.info("You are currently logged in as an Editor. Use the main screen to update scores for your specific department.")
+
+if nav_options:
+    if st.session_state.get("admin_nav") not in nav_options:
+        st.session_state["admin_nav"] = nav_options[0]
+    # label_visibility="collapsed" keeps it clean without writing "Select View" above the radio buttons
+    selected_tab = st.sidebar.radio("Select View", nav_options, key="admin_nav", label_visibility="collapsed")
+else:
+    selected_tab = None
+
+
+# ==========================================
+# --- MAIN APP HEADER & LOGIC ---
+# ==========================================
+st.title("🌐 Enterprise SkillMatrix" if role == 'superadmin' else f"🏢 {my_team} SkillMatrix")
 st.divider()
 
 if 'flash_msg' in st.session_state:
@@ -240,39 +277,6 @@ if 'flash_error' in st.session_state:
     st.error(st.session_state['flash_error'])
     del st.session_state['flash_error']
 
-
-# ==========================================
-# --- SIDEBAR NAVIGATION MENU ---
-# ==========================================
-st.sidebar.markdown("## 🧭 Navigation")
-
-if role == 'superadmin':
-    nav_options = [
-        "📝 Matrix Editor", "👤 Members", "🎯 Skills", 
-        "📊 Dashboard", "📈 Analytics", "🏢 Hierarchy", "🔐 Credentials"
-    ]
-elif role == 'admin':
-    # Expanded Access for Team Admins
-    nav_options = [
-        "📝 Matrix Editor", "👤 Members", "🎯 Skills", 
-        "📊 Dashboard", "📈 Analytics", "🔐 Credentials"
-    ]
-else:
-    # Standard Editors
-    nav_options = []
-    st.sidebar.info("You are currently logged in as an Editor. Use the main screen to update scores for your specific department.")
-
-if nav_options:
-    if st.session_state.get("admin_nav") not in nav_options:
-        st.session_state["admin_nav"] = nav_options[0]
-    selected_tab = st.sidebar.radio("Select View", nav_options, key="admin_nav")
-else:
-    selected_tab = None
-
-
-# ==========================================
-# --- CORE APP LOGIC ---
-# ==========================================
 def render_team_selector(prefix, role, my_team, teams_list, directory_df):
     """Bulletproof Team Selector ignoring whitespace mismatches"""
     colA, colB = st.columns(2)
@@ -299,14 +303,12 @@ try:
         directory_df = load_directory()
         creds_df = load_credentials()
         
-        # Aggressive stripping to prevent NaN matching errors
         directory_df['Team'] = directory_df['Team'].astype(str).str.strip()
         directory_df['Department'] = directory_df['Department'].astype(str).str.strip()
         creds_df['Team'] = creds_df['Team'].astype(str).str.strip()
         creds_df['Department'] = creds_df['Department'].astype(str).str.strip()
         creds_df['Role'] = creds_df['Role'].astype(str).str.strip()
         
-        # Hardcode admins strictly to their team so UI never goes blank
         teams_list = directory_df['Team'].unique().tolist() if role == 'superadmin' else [my_team]
         
         # --- VIEW 1: MATRIX EDITOR ---
