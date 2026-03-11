@@ -162,7 +162,6 @@ if not st.session_state['authenticated']:
             st.error("**🔐 Role-Based Access**\n\nSecure, specific views for Admins, Managers, and Editors.")
             
     with col_divider:
-        # Divider is now significantly longer
         st.markdown(
             """
             <div style="border-left: 2px solid rgba(128, 128, 128, 0.2); min-height: 550px; height: 100%; margin: 0 auto;"></div>
@@ -187,6 +186,9 @@ if not st.session_state['authenticated']:
                     st.session_state['username'] = str(username)
                     st.session_state['team_access'] = str(user_row.iloc[0]['Team'])
                     st.session_state['dept_access'] = str(user_row.iloc[0]['Department'])
+                    # Reset the admin navigation tab so it doesn't get stuck
+                    if "admin_nav" in st.session_state:
+                        del st.session_state["admin_nav"]
                     st.rerun()
                 else:
                     st.error("Invalid username or password")
@@ -204,6 +206,7 @@ else:
 
 if st.sidebar.button("Logout"):
     for key in ['authenticated', 'role', 'username', 'team_access', 'dept_access']: st.session_state[key] = None
+    if "admin_nav" in st.session_state: del st.session_state["admin_nav"]
     st.rerun()
 
 # DYNAMIC HEADER
@@ -251,12 +254,16 @@ if role in ['superadmin', 'admin']:
     teams_list = directory_df['Team'].unique().tolist() if role == 'superadmin' else [my_team] if my_team in directory_df['Team'].tolist() else []
 
     # --- TOP LEVEL NAVIGATION ROUTER ---
-    # This completely replaces st.tabs() and remembers where you are!
-    nav_options = [
-        "📝 Matrix Editor", "👤 Members", "🎯 Skills", 
-        "📊 Dashboard", "📈 Analytics", "🏢 Hierarchy", "🔐 Credentials"
-    ]
-    if "admin_nav" not in st.session_state:
+    # Hide "Hierarchy" from normal Team Admins
+    nav_options = ["📝 Matrix Editor", "👤 Members", "🎯 Skills", "📊 Dashboard", "📈 Analytics"]
+    
+    if role == 'superadmin':
+        nav_options.extend(["🏢 Hierarchy", "🔐 Credentials"])
+    elif role == 'admin':
+        nav_options.extend(["🔐 Credentials"])
+        
+    # Ensure current selected tab is valid (fixes visual bug if role swaps)
+    if st.session_state.get("admin_nav") not in nav_options:
         st.session_state["admin_nav"] = nav_options[0]
 
     selected_tab = st.radio("Menu Navigation", nav_options, horizontal=True, label_visibility="collapsed", key="admin_nav")
@@ -412,44 +419,42 @@ if role in ['superadmin', 'admin']:
                         })
                     st.dataframe(pd.DataFrame(t3), hide_index=True, use_container_width=True)
 
-    # --- TAB 6: TEAM HIERARCHY ---
-    elif selected_tab == "🏢 Hierarchy":
+    # --- TAB 6: TEAM HIERARCHY (SUPERADMIN ONLY) ---
+    elif selected_tab == "🏢 Hierarchy" and role == 'superadmin':
         st.header("Team Hierarchy Setup")
-        if role == 'superadmin':
-            st.write("Manage your organizational structure below.")
-            action_type = st.radio("Action:", ["Create a New Team", "Add Department to Existing Team"])
-            with st.form("new_hierarchy_form", clear_on_submit=True):
-                if action_type == "Create a New Team":
-                    has_dept = st.radio("Has departments?", ["No", "Yes"])
-                    new_t = st.text_input("New Team Name")
-                    new_d = st.text_input("Department Name") if has_dept == "Yes" else "None"
-                else:
-                    new_t = st.selectbox("Existing Team", teams_list) if teams_list else None
-                    new_d = st.text_input("New Department Name")
-                
-                if st.form_submit_button("Create Structure"):
-                    if new_t and new_d:
-                        if new_d == "None" and action_type == "Add Department to Existing Team": st.error("Provide a valid name.")
-                        else:
-                            add_to_directory(new_t, new_d)
-                            st.session_state['flash_msg'] = "Structure created!"
-                            st.rerun()
+        st.write("Manage your organizational structure below.")
+        action_type = st.radio("Action:", ["Create a New Team", "Add Department to Existing Team"])
+        with st.form("new_hierarchy_form", clear_on_submit=True):
+            if action_type == "Create a New Team":
+                has_dept = st.radio("Has departments?", ["No", "Yes"])
+                new_t = st.text_input("New Team Name")
+                new_d = st.text_input("Department Name") if has_dept == "Yes" else "None"
+            else:
+                new_t = st.selectbox("Existing Team", teams_list) if teams_list else None
+                new_d = st.text_input("New Department Name")
             
-            st.divider()
-            st.subheader("Current Master Directory")
-            st.write("Select a row and press Delete (or the trash icon) to remove it.")
-            edited_dir = st.data_editor(directory_df, hide_index=True, use_container_width=True, num_rows="dynamic", disabled=("Team", "Department"), key="dir_editor")
-            if st.button("💾 Save Directory Changes", type="primary"):
-                conn.update(worksheet="Directory", data=edited_dir)
-                st.session_state['flash_msg'] = "Directory updated!"
-                st.rerun()
-        else:
-            st.warning("Only Superadmins can manage the global hierarchy.")
-            st.dataframe(directory_df[directory_df['Team'] == my_team], hide_index=True)
+            if st.form_submit_button("Create Structure"):
+                if new_t and new_d:
+                    if new_d == "None" and action_type == "Add Department to Existing Team": st.error("Provide a valid name.")
+                    else:
+                        add_to_directory(new_t, new_d)
+                        st.session_state['flash_msg'] = "Structure created!"
+                        st.rerun()
+        
+        st.divider()
+        st.subheader("Current Master Directory")
+        st.write("Select a row and press Delete (or the trash icon) to remove it.")
+        edited_dir = st.data_editor(directory_df, hide_index=True, use_container_width=True, num_rows="dynamic", disabled=("Team", "Department"), key="dir_editor")
+        if st.button("💾 Save Directory Changes", type="primary"):
+            conn.update(worksheet="Directory", data=edited_dir)
+            st.session_state['flash_msg'] = "Directory updated!"
+            st.rerun()
 
     # --- TAB 7: CREDENTIALS ---
     elif selected_tab == "🔐 Credentials":
         st.header("Setup New User Credential")
+        
+        show_form = True
         c_team, c_dept = None, None
         
         if role == 'superadmin':
@@ -457,7 +462,9 @@ if role in ['superadmin', 'admin']:
             if c_role == "editor":
                 existing = set(zip(creds_df[creds_df['Role']=='editor']['Team'], creds_df[creds_df['Role']=='editor']['Department']))
                 avail = set(zip(directory_df['Team'], directory_df['Department'])) - existing
-                if not avail: st.warning("All Team/Dept combos already have editors.")
+                if not avail: 
+                    st.warning("All Team/Dept combos already have editors.")
+                    show_form = False
                 else:
                     c_team = st.selectbox("Assign Team", sorted(list(set([t for t, d in avail]))))
                     avail_d = sorted([d for t, d in avail if t == c_team])
@@ -466,22 +473,28 @@ if role in ['superadmin', 'admin']:
             elif c_role == "admin":
                 existing = creds_df[creds_df['Role']=='admin']['Team'].tolist()
                 avail = sorted([t for t in teams_list if t not in existing])
-                if not avail: st.warning("All Teams already have an admin.")
+                if not avail: 
+                    st.warning("All Teams already have an admin.")
+                    show_form = False
                 else:
                     c_team, c_dept = st.selectbox("Assign Team Admin rights to:", avail), "All"
-            else: c_team, c_dept = "All", "All"
+            else: 
+                c_team, c_dept = "All", "All"
         else:
             c_role = "editor"
+            st.info("As a Team Admin, you can only create 'Editor' accounts for your own team.")
             c_team = my_team
             existing = creds_df[(creds_df['Role']=='editor') & (creds_df['Team']==my_team)]['Department'].tolist()
             avail = sorted([d for d in directory_df[directory_df['Team']==my_team]['Department'].tolist() if d not in existing])
-            if not avail: st.warning(f"All departments in {my_team} already have editors.")
+            if not avail: 
+                st.warning(f"All departments in {my_team} already have editor credentials assigned.")
+                show_form = False
             else:
                 if "None" in avail and len(avail) == 1: c_dept = "None"
                 else: c_dept = st.selectbox("Assign Department", avail)
 
-        # STRICTLY render the form ONLY if a valid team/dept is available
-        if c_team is not None and c_dept is not None:
+        # Ensure the form is entirely skipped/hidden if there's nothing available to assign
+        if show_form and c_team is not None and c_dept is not None:
             with st.form("new_user_form", clear_on_submit=True):
                 c_user = st.text_input("New Username")
                 c_pass = st.text_input("New Password", type="password")
@@ -490,7 +503,8 @@ if role in ['superadmin', 'admin']:
                         if add_credential(c_user, c_pass, c_role, c_team, c_dept):
                             st.session_state['flash_msg'] = f"Created {c_role} '{c_user}'!"
                             st.rerun()
-                        else: st.error("Username already exists!")
+                        else: 
+                            st.error("Username already exists!")
 
         st.divider()
         st.header("Credential List")
