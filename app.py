@@ -328,7 +328,7 @@ try:
                         )
 
         # -------------------------------------------------------------------
-        # VIEW 2: SKILL ANALYTICS (TOP 3)
+        # VIEW 2: SKILL ANALYTICS (TABBED)
         # -------------------------------------------------------------------
         elif selected_tab == "📈 Analytics":
             if teams_list:
@@ -336,6 +336,7 @@ try:
                 if sel_t and sel_d:
                     df = load_matrix(sel_t, sel_d)
                     sk_cols = [c for c in df.columns if c not in ['Name', 'Designation']]
+                    
                     if not sk_cols or df.empty: 
                         st.info("No skills to analyze.")
                     else:
@@ -343,40 +344,83 @@ try:
                         for c in sk_cols: 
                             num_df[c] = pd.to_numeric(num_df[c], errors='coerce').fillna(0).astype(int)
 
-                        # --- Section 1: Skill Focus ---
-                        col_selector, col_chart = st.columns([1, 2])
-                        with col_selector:
-                            st.subheader("🎯 Skill Focus")
-                            sel_sk = st.selectbox("Choose Skill", sk_cols)
-                            sk_scores = num_df[['Name', sel_sk]].sort_values(by=sel_sk, ascending=False)
+                        # --- Create Tabs for Compact Layout ---
+                        tab_focus, tab_person, tab_gaps = st.tabs([
+                            "🎯 Leaders & Overview", 
+                            "👤 Individual Profiles", 
+                            "⚠️ Zero Skill Analysis"
+                        ])
+
+                        # --- TAB 1: LEADERS & OVERVIEW ---
+                        with tab_focus:
+                            col_selector, col_chart = st.columns([1, 2])
+                            with col_selector:
+                                st.subheader("🎯 Skill Focus")
+                                sel_sk = st.selectbox("Choose Skill", sk_cols, key="sk_foc")
+                                sk_scores = num_df[['Name', sel_sk]].sort_values(by=sel_sk, ascending=False)
+                                
+                                top_person = sk_scores.iloc[0]['Name']
+                                top_val = sk_scores.iloc[0][sel_sk]
+                                st.success(f"**Top Expert:** \n\n {top_person} ({top_val})")
+
+                            with col_chart:
+                                st.bar_chart(sk_scores.set_index('Name'), color="#2ecc71", use_container_width=True)
+
+                            st.divider()
+                            st.subheader("🏆 Category Leaders (Top 3)")
                             
-                            top_person = sk_scores.iloc[0]['Name']
-                            top_val = sk_scores.iloc[0][sel_sk]
-                            st.success(f"**Top Expert:** \n\n {top_person} ({top_val})")
-
-                        with col_chart:
-                            st.bar_chart(sk_scores.set_index('Name'), color="#2ecc71", use_container_width=True)
-
-                        st.divider()
-
-                        # --- Section 2: Professional Leaderboard (Top 3) ---
-                        st.subheader("🏆 Category Leaders")
-                        
-                        t3 = []
-                        for s in sk_cols:
-                            sorted_d = num_df[['Name', s]].sort_values(by=s, ascending=False)
-                            sorted_d = sorted_d[sorted_d[s] > 0] 
+                            t3 = []
+                            for s in sk_cols:
+                                sorted_d = num_df[['Name', s]].sort_values(by=s, ascending=False)
+                                sorted_d = sorted_d[sorted_d[s] > 0] 
+                                
+                                n = sorted_d['Name'].tolist()
+                                sc = sorted_d[s].tolist()
+                                t3.append({
+                                    "Skill": s, 
+                                    "🥇 1st Place": f"{n[0]} ({sc[0]})" if len(n)>0 else "-", 
+                                    "🥈 2nd Place": f"{n[1]} ({sc[1]})" if len(n)>1 else "-",
+                                    "🥉 3rd Place": f"{n[2]} ({sc[2]})" if len(n)>2 else "-"
+                                })
                             
-                            n = sorted_d['Name'].tolist()
-                            sc = sorted_d[s].tolist()
-                            t3.append({
-                                "Skill": s, 
-                                "🥇 1st Place": f"{n[0]} ({sc[0]})" if len(n)>0 else "-", 
-                                "🥈 2nd Place": f"{n[1]} ({sc[1]})" if len(n)>1 else "-",
-                                "🥉 3rd Place": f"{n[2]} ({sc[2]})" if len(n)>2 else "-"
-                            })
-                        
-                        st.table(pd.DataFrame(t3).set_index("Skill"))
+                            st.table(pd.DataFrame(t3).set_index("Skill"))
+
+                        # --- TAB 2: INDIVIDUAL PROFILES ---
+                        with tab_person:
+                            st.subheader("👤 View Skills by Person")
+                            sel_person = st.selectbox("Select Team Member", num_df['Name'].tolist())
+                            
+                            person_data = num_df[num_df['Name'] == sel_person][sk_cols].T.reset_index()
+                            person_data.columns = ['Skill', 'Score']
+                            person_data = person_data.sort_values(by='Score', ascending=False)
+                            
+                            c1, c2 = st.columns([1, 2])
+                            with c1:
+                                active_skills = person_data[person_data['Score'] > 0]
+                                st.dataframe(active_skills, hide_index=True, use_container_width=True)
+                            with c2:
+                                st.bar_chart(person_data.set_index('Skill'), color="#3498db", use_container_width=True)
+
+                        # --- TAB 3: ZERO SKILL ANALYSIS ---
+                        with tab_gaps:
+                            st.subheader("⚠️ Missing Skills & Cross-Training")
+                            
+                            zero_skills = [s for s in sk_cols if num_df[s].sum() == 0]
+                            if zero_skills:
+                                st.error(f"**🚨 Critical Team Gaps (No one has > 0 score):**\n\n" + ", ".join(zero_skills))
+                            else:
+                                st.success("**✅ No critical team-wide gaps.** Every tracked skill has at least one member with a score > 0.")
+                                
+                            st.divider()
+                            
+                            st.markdown("#### Identify Members for Cross-Training")
+                            gap_skill = st.selectbox("Select Skill to find members with zero experience", sk_cols, key="sk_gap")
+                            zero_people = num_df[num_df[gap_skill] == 0]['Name'].tolist()
+                            
+                            if zero_people:
+                                st.warning(f"**Members with 0 in {gap_skill}:**\n\n" + "\n".join([f"- {p}" for p in zero_people]))
+                            else:
+                                st.success(f"✅ Everyone on the team has at least a score of 1 in {gap_skill}!")
 
         # -------------------------------------------------------------------
         # VIEW 3: MATRIX EDITOR
