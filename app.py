@@ -286,7 +286,7 @@ try:
         teams_list = directory_df['Team'].unique().tolist() if role == 'superadmin' else [my_team]
         
         # -------------------------------------------------------------------
-        # VIEW 1: DASHBOARD (API QUOTA SAFE)
+        # VIEW 1: DASHBOARD
         # -------------------------------------------------------------------
         if selected_tab == "📊 Dashboard":
             if teams_list:
@@ -344,7 +344,6 @@ try:
                         for c in sk_cols: 
                             num_df[c] = pd.to_numeric(num_df[c], errors='coerce').fillna(0).astype(int)
 
-                        # --- Create Tabs for Compact Layout ---
                         tab_focus, tab_person, tab_gaps = st.tabs([
                             "🎯 Leaders & Overview", 
                             "👤 Individual Profiles", 
@@ -401,10 +400,11 @@ try:
                             with c2:
                                 st.bar_chart(person_data.set_index('Skill'), color="#3498db", use_container_width=True)
 
-                        # --- TAB 3: ZERO SKILL ANALYSIS ---
+                        # --- TAB 3: ZERO SKILL ANALYSIS (CONSOLIDATED TABLE) ---
                         with tab_gaps:
                             st.subheader("⚠️ Missing Skills & Cross-Training")
                             
+                            # Team-wide Skill Gaps
                             zero_skills = [s for s in sk_cols if num_df[s].sum() == 0]
                             if zero_skills:
                                 st.error(f"**🚨 Critical Team Gaps (No one has > 0 score):**\n\n" + ", ".join(zero_skills))
@@ -412,15 +412,23 @@ try:
                                 st.success("**✅ No critical team-wide gaps.** Every tracked skill has at least one member with a score > 0.")
                                 
                             st.divider()
+                            st.markdown("#### 📋 Members Requiring Training by Skill")
                             
-                            st.markdown("#### Identify Members for Cross-Training")
-                            gap_skill = st.selectbox("Select Skill to find members with zero experience", sk_cols, key="sk_gap")
-                            zero_people = num_df[num_df[gap_skill] == 0]['Name'].tolist()
-                            
-                            if zero_people:
-                                st.warning(f"**Members with 0 in {gap_skill}:**\n\n" + "\n".join([f"- {p}" for p in zero_people]))
+                            # Consolidate all zero-score members into one table
+                            zero_skill_data = []
+                            for s in sk_cols:
+                                zero_people = num_df[num_df[s] == 0]['Name'].tolist()
+                                if zero_people:
+                                    zero_skill_data.append({
+                                        "Skill": s, 
+                                        "Members with 0 Score": ", ".join(zero_people)
+                                    })
+                                    
+                            if zero_skill_data:
+                                gap_df = pd.DataFrame(zero_skill_data)
+                                st.dataframe(gap_df, hide_index=True, use_container_width=True)
                             else:
-                                st.success(f"✅ Everyone on the team has at least a score of 1 in {gap_skill}!")
+                                st.success("🎉 Incredible! Everyone on this team has at least a beginner level (1+) in every single tracked skill.")
 
         # -------------------------------------------------------------------
         # VIEW 3: MATRIX EDITOR
