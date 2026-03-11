@@ -5,7 +5,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # 1. Page Configuration
-st.set_page_config(page_title="SkillMatrix", layout="wide")
+st.set_page_config(page_title="Canyon SkillMatrix", layout="wide")
 
 # --- DATABASE SETUP (GOOGLE SHEETS) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -86,6 +86,11 @@ def add_credential(username, password, role, team, dept):
     conn.update(worksheet="Credentials", data=updated_creds)
     return True
 
+def delete_credential(username):
+    creds_df = load_credentials()
+    updated_creds = creds_df[creds_df['Username'] != username]
+    conn.update(worksheet="Credentials", data=updated_creds)
+
 
 # --- DIRECTORY AND MATRIX MANAGEMENT ---
 def load_directory():
@@ -152,7 +157,7 @@ if 'authenticated' not in st.session_state:
 
 # --- LOGIN PAGE ---
 if not st.session_state['authenticated']:
-    st.title("SkillMatrix")
+    st.title("Canyon SkillMatrix")
     st.write("Please log in to manage your team's skill matrix.")
     
     with st.form("login_form"):
@@ -197,7 +202,7 @@ if st.sidebar.button("Logout"):
     st.session_state['dept_access'] = None
     st.rerun()
 
-st.title("SkillMatrix")
+st.title("Canyon SkillMatrix")
 
 if 'flash_msg' in st.session_state:
     st.success(st.session_state['flash_msg'])
@@ -482,7 +487,9 @@ if role in ['superadmin', 'admin']:
     with t_cred:
         st.header("Setup New User Credential")
         
-        # Determine dynamic options by filtering out existing assigned credentials
+        show_form = True # Flag to control visibility of username/password fields
+        c_team, c_dept = None, None
+        
         if role == 'superadmin':
             c_role = st.selectbox("Assign Role", ["editor", "admin", "superadmin"])
             
@@ -494,7 +501,7 @@ if role in ['superadmin', 'admin']:
                 
                 if not available_combos:
                     st.warning("All Team & Department combinations already have editor credentials assigned.")
-                    c_team, c_dept = None, None
+                    show_form = False
                 else:
                     available_teams = sorted(list(set([t for t, d in available_combos])))
                     c_team = st.selectbox("Assign Team", available_teams, key="new_cred_team")
@@ -513,7 +520,7 @@ if role in ['superadmin', 'admin']:
                 
                 if not available_teams:
                     st.warning("All Teams already have an admin credential assigned.")
-                    c_team, c_dept = None, None
+                    show_form = False
                 else:
                     c_team = st.selectbox("Assign Team Admin rights to:", available_teams, key="new_cred_team")
                     c_dept = "All"
@@ -532,28 +539,29 @@ if role in ['superadmin', 'admin']:
             
             if not available_depts:
                 st.warning(f"All departments in {my_team} already have editor credentials assigned.")
-                c_team, c_dept = None, None
+                show_form = False
             else:
                 if "None" in available_depts and len(available_depts) == 1:
                     c_dept = "None"
                 else:
                     c_dept = st.selectbox("Assign Department", available_depts)
 
-        with st.form("new_user_form"):
-            c_user = st.text_input("New Username")
-            c_pass = st.text_input("New Password", type="password")
-            submitted = st.form_submit_button("Create Credential")
-            
-            if submitted:
-                if c_team is None:
-                    st.error("No valid team/department available to assign.")
-                elif c_user and c_pass:
-                    success = add_credential(c_user, c_pass, c_role, c_team, c_dept)
-                    if success:
-                        st.session_state['flash_msg'] = f"Successfully created {c_role} user '{c_user}'!"
-                        st.rerun()
-                    else:
-                        st.error("Username already exists!")
+        if show_form:
+            with st.form("new_user_form"):
+                c_user = st.text_input("New Username")
+                c_pass = st.text_input("New Password", type="password")
+                submitted = st.form_submit_button("Create Credential")
+                
+                if submitted:
+                    if c_team is None:
+                        st.error("No valid team/department available to assign.")
+                    elif c_user and c_pass:
+                        success = add_credential(c_user, c_pass, c_role, c_team, c_dept)
+                        if success:
+                            st.session_state['flash_msg'] = f"Successfully created {c_role} user '{c_user}'!"
+                            st.rerun()
+                        else:
+                            st.error("Username already exists!")
 
         st.divider()
         st.header("Credential List")
