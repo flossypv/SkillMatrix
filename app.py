@@ -5,7 +5,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # 1. Page Configuration
-st.set_page_config(page_title="Canyon SkillMatrix", layout="wide")
+st.set_page_config(page_title="Canyon SkillMatrix", layout="wide", initial_sidebar_state="expanded")
 
 # --- DATABASE SETUP (GOOGLE SHEETS) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -86,6 +86,11 @@ def add_credential(username, password, role, team, dept):
     conn.update(worksheet="Credentials", data=updated_creds)
     return True
 
+def delete_credential(username):
+    creds_df = load_credentials()
+    updated_creds = creds_df[creds_df['Username'].astype(str) != str(username)]
+    conn.update(worksheet="Credentials", data=updated_creds)
+
 
 # --- DIRECTORY AND MATRIX MANAGEMENT ---
 def load_directory():
@@ -141,6 +146,11 @@ def add_to_directory(team, dept):
         ensure_worksheet_exists(sheet_name)
         conn.update(worksheet=sheet_name, data=empty_df)
 
+def delete_from_directory(team, dept):
+    dir_df = load_directory()
+    updated_dir = dir_df[~((dir_df['Team'].astype(str) == str(team)) & (dir_df['Department'].astype(str) == str(dept)))]
+    conn.update(worksheet="Directory", data=updated_dir)
+
 
 # --- AUTHENTICATION STATE ---
 if 'authenticated' not in st.session_state:
@@ -150,29 +160,53 @@ if 'authenticated' not in st.session_state:
     st.session_state['team_access'] = None
     st.session_state['dept_access'] = None
 
-# --- LOGIN PAGE ---
+# --- BEAUTIFUL LOGIN PAGE ---
 if not st.session_state['authenticated']:
-    st.title("Canyon SkillMatrix")
-    st.write("Please log in to manage your team's skill matrix.")
+    # Use columns to split the page: 55% left, 10% spacing, 35% right
+    col_info, col_space, col_login = st.columns([1.3, 0.2, 0.9])
     
-    with st.form("login_form"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        submit = st.form_submit_button("Login")
+    with col_info:
+        st.title("Canyon SkillMatrix 🚀")
+        st.markdown("""
+        #### Empowering Teams Through Skill Tracking
+        Track, analyze, and manage your organization's capabilities securely with our dynamic dashboard.
+        
+        * 📊 **Interactive Heatmaps:** Instantly spot skill gaps and strengths.
+        * 📈 **Deep Analytics:** Identify top performers and training opportunities.
+        * 🏢 **Custom Hierarchies:** Tailor the matrix to your exact team structure.
+        * 🔐 **Role-Based Access:** Secure, specific views for Admins and Editors.
+        """)
+        st.write("") # small gap
+        # Add a nice open-source infographic image
+        st.image("https://images.unsplash.com/photo-1460925895917-afdab827c52f?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80", use_container_width=True)
 
-        if submit:
-            creds_df = load_credentials()
-            user_row = creds_df[creds_df['Username'].astype(str) == str(username)]
+    with col_login:
+        st.markdown("<br><br>", unsafe_allow_html=True) # Push the form down to align better
+        st.subheader("🔐 Secure Login")
+        st.write("Please log in to manage your team.")
+        
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
             
-            if not user_row.empty and str(user_row.iloc[0]['Password']) == password:
-                st.session_state['authenticated'] = True
-                st.session_state['role'] = str(user_row.iloc[0]['Role'])
-                st.session_state['username'] = str(username)
-                st.session_state['team_access'] = str(user_row.iloc[0]['Team'])
-                st.session_state['dept_access'] = str(user_row.iloc[0]['Department'])
-                st.rerun()
-            else:
-                st.error("Invalid username or password")
+            # Make the button wide for a modern look
+            submit = st.form_submit_button("Log In", use_container_width=True)
+
+            if submit:
+                creds_df = load_credentials()
+                user_row = creds_df[creds_df['Username'].astype(str) == str(username)]
+                
+                if not user_row.empty and str(user_row.iloc[0]['Password']) == password:
+                    st.session_state['authenticated'] = True
+                    st.session_state['role'] = str(user_row.iloc[0]['Role'])
+                    st.session_state['username'] = str(username)
+                    st.session_state['team_access'] = str(user_row.iloc[0]['Team'])
+                    st.session_state['dept_access'] = str(user_row.iloc[0]['Department'])
+                    st.rerun()
+                else:
+                    st.error("Invalid username or password")
+    
+    # Stop execution here so the rest of the app doesn't load
     st.stop()
 
 
@@ -488,22 +522,22 @@ if role in ['superadmin', 'admin']:
                             st.rerun()
             
             st.divider()
+            st.subheader("🗑️ Delete Structure")
+            col_del1, col_del2 = st.columns(2)
+            del_team = col_del1.selectbox("Select Team to Delete", teams_list, key="del_team")
+            
+            if del_team:
+                del_depts = directory_df[directory_df['Team'] == del_team]['Department'].tolist()
+                del_dept = col_del2.selectbox("Select Department to Delete", sorted(del_depts), key="del_dept")
+                
+                if st.button("❌ Delete Selection", type="secondary"):
+                    delete_from_directory(del_team, del_dept)
+                    st.session_state['flash_msg'] = f"Removed {del_team} - {del_dept} from the directory."
+                    st.rerun()
+
+            st.divider()
             st.subheader("Current Master Directory")
-            st.write("You can delete existing Teams/Departments directly from the table below by selecting the row and pressing the delete key (or trash icon).")
-            
-            edited_dir = st.data_editor(
-                directory_df,
-                hide_index=True,
-                use_container_width=True,
-                num_rows="dynamic",
-                disabled=("Team", "Department"), 
-                key="dir_editor"
-            )
-            
-            if st.button("💾 Save Directory Changes", type="primary"):
-                conn.update(worksheet="Directory", data=edited_dir)
-                st.session_state['flash_msg'] = "Directory updated successfully!"
-                st.rerun()
+            st.dataframe(directory_df, hide_index=True, use_container_width=True)
             
         else:
             st.warning("Access Restricted: Only Superadmins can manage the global team hierarchy.")
