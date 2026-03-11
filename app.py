@@ -267,7 +267,7 @@ else:
 # ==========================================
 # --- MAIN APP HEADER & LOGIC ---
 # ==========================================
-st.title("🌐 Enterprise SkillMatrix" if role == 'superadmin' else f"🏢 {my_team} SkillMatrix")
+st.title("🌐 AppDevelopment SkillMatrix" if role == 'superadmin' else f"🏢 {my_team} SkillMatrix")
 st.divider()
 
 if 'flash_msg' in st.session_state:
@@ -303,12 +303,14 @@ try:
         directory_df = load_directory()
         creds_df = load_credentials()
         
+        # Aggressive stripping to prevent NaN matching errors
         directory_df['Team'] = directory_df['Team'].astype(str).str.strip()
         directory_df['Department'] = directory_df['Department'].astype(str).str.strip()
         creds_df['Team'] = creds_df['Team'].astype(str).str.strip()
         creds_df['Department'] = creds_df['Department'].astype(str).str.strip()
         creds_df['Role'] = creds_df['Role'].astype(str).str.strip()
         
+        # Hardcode admins strictly to their team so UI never goes blank
         teams_list = directory_df['Team'].unique().tolist() if role == 'superadmin' else [my_team]
         
         # --- VIEW 1: MATRIX EDITOR ---
