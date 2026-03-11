@@ -213,29 +213,23 @@ my_team = st.session_state['team_access']
 my_dept = st.session_state['dept_access']
 username = st.session_state['username']
 
-# --- MODERN TOP HEADER WITH PROFILE POPOVER ---
-col_title, col_profile = st.columns([7, 1])
+# --- AESTHETIC WELCOME MESSAGE ---
+st.markdown(f"<h4 style='color: #2e66ff; font-weight: 500; margin-bottom: -15px;'>👋 Welcome back, {username}!</h4>", unsafe_allow_html=True)
+
+# --- TOP HEADER & LOGOUT BUTTON ---
+col_title, col_profile = st.columns([8, 1])
 
 with col_title:
     st.title("🌐 Enterprise SkillMatrix" if role == 'superadmin' else f"🏢 {my_team} SkillMatrix")
-    st.markdown(f"##### 👋 Welcome back, **{username}**!")
 
 with col_profile:
-    st.write("") # Vertical alignment spacing
-    # This creates a sleek dropdown menu behind a "Profile" icon button!
-    with st.popover("👤 Profile", use_container_width=True):
-        st.markdown(f"**Username:** {username}")
-        st.markdown(f"**Access:** {role.capitalize()}")
-        st.markdown(f"**Team:** {my_team}")
-        if my_dept and my_dept != "None":
-            st.markdown(f"**Dept:** {my_dept}")
-        st.divider()
-        if st.button("🚪 Logout", use_container_width=True):
-            for key in ['authenticated', 'role', 'username', 'team_access', 'dept_access']: 
-                st.session_state[key] = None
-            if "admin_nav" in st.session_state: 
-                del st.session_state["admin_nav"]
-            st.rerun()
+    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+    if st.button("🚪 Logout", use_container_width=True):
+        for key in ['authenticated', 'role', 'username', 'team_access', 'dept_access']: 
+            st.session_state[key] = None
+        if "admin_nav" in st.session_state: 
+            del st.session_state["admin_nav"]
+        st.rerun()
 
 st.divider()
 
