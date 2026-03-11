@@ -146,6 +146,11 @@ def add_to_directory(team, dept):
         ensure_worksheet_exists(sheet_name)
         conn.update(worksheet=sheet_name, data=empty_df)
 
+def delete_from_directory(team, dept):
+    dir_df = load_directory()
+    updated_dir = dir_df[~((dir_df['Team'] == team) & (dir_df['Department'] == dept))]
+    conn.update(worksheet="Directory", data=updated_dir)
+
 
 # --- AUTHENTICATION STATE ---
 if 'authenticated' not in st.session_state:
@@ -247,7 +252,7 @@ def display_admin_controls(team, dept, df_key):
     
     with col1:
         st.markdown("#### 👤 Members")
-        with st.form(f"add_member_{team}_{dept}"):
+        with st.form(f"add_member_{team}_{dept}", clear_on_submit=True):
             new_name = st.text_input("Member Name")
             new_designation = st.text_input("Designation")
             if st.form_submit_button("➕ Add Member"):
@@ -273,7 +278,7 @@ def display_admin_controls(team, dept, df_key):
 
     with col2:
         st.markdown("#### 🎯 Skills")
-        with st.form(f"add_skill_{team}_{dept}"):
+        with st.form(f"add_skill_{team}_{dept}", clear_on_submit=True):
             new_skill = st.text_input("Skill Name")
             if st.form_submit_button("➕ Add Skill"):
                 if new_skill and new_skill not in df.columns:
@@ -462,8 +467,12 @@ if role in ['superadmin', 'admin']:
         st.header("🏢 Team Hierarchy Setup")
         if role == 'superadmin':
             st.write("Create a new organizational structure. If the Team already exists, type it exactly as it appears to add a new department to it.")
-            with st.form("new_hierarchy_form"):
-                has_dept = st.radio("Does this Team have departments?", ["No, just a Team", "Yes, Team with Departments"])
+            
+            # The Radio button is OUTSIDE the form so it changes the UI dynamically
+            has_dept = st.radio("Does this Team have departments?", ["No, just a Team", "Yes, Team with Departments"])
+            
+            # The text inputs are INSIDE the form to prevent "saving while typing"
+            with st.form("new_hierarchy_form", clear_on_submit=True):
                 new_t_name = st.text_input("Team Name (e.g., 'Apollo')")
                 new_d_name = st.text_input("Department Name (e.g., 'Backend')") if has_dept == "Yes, Team with Departments" else "None"
                 
@@ -475,8 +484,25 @@ if role in ['superadmin', 'admin']:
                         st.rerun()
             
             st.divider()
+            st.subheader("🗑️ Delete Structure")
+            
+            # Use columns and selectboxes outside a form for dynamic filtering
+            col_del1, col_del2 = st.columns(2)
+            del_team = col_del1.selectbox("Select Team to Delete", directory_df['Team'].unique().tolist(), key="del_team")
+            
+            if del_team:
+                del_depts = directory_df[directory_df['Team'] == del_team]['Department'].tolist()
+                del_dept = col_del2.selectbox("Select Department to Delete", del_depts, key="del_dept")
+                
+                if st.button("❌ Delete Selection", type="secondary"):
+                    delete_from_directory(del_team, del_dept)
+                    st.session_state['flash_msg'] = f"Removed {del_team} - {del_dept} from the directory."
+                    st.rerun()
+
+            st.divider()
             st.subheader("Current Master Directory")
             st.dataframe(directory_df, hide_index=True, use_container_width=True)
+            
         else:
             st.warning("Access Restricted: Only Superadmins can manage the global team hierarchy.")
             st.write("Your current active departments:")
@@ -547,7 +573,7 @@ if role in ['superadmin', 'admin']:
                     c_dept = st.selectbox("Assign Department", available_depts)
 
         if show_form:
-            with st.form("new_user_form"):
+            with st.form("new_user_form", clear_on_submit=True):
                 c_user = st.text_input("New Username")
                 c_pass = st.text_input("New Password", type="password")
                 submitted = st.form_submit_button("Create Credential")
