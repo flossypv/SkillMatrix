@@ -3,6 +3,7 @@ import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 import gspread
 from google.oauth2.service_account import Credentials
+import time  # Imported to handle Google API sync delays
 
 # 1. Page Configuration
 st.set_page_config(page_title="SkillMatrix", layout="wide", initial_sidebar_state="expanded")
@@ -79,12 +80,14 @@ def add_credential(username, password, role, team, dept):
     new_user = pd.DataFrame([{"Username": username, "Password": password, "Role": role, "Team": team, "Department": dept}])
     updated_creds = pd.concat([creds_df, new_user], ignore_index=True)
     conn.update(worksheet="Credentials", data=updated_creds)
+    st.cache_data.clear() # Clear cache to ensure immediate read
     return True
 
 def delete_credential(username):
     creds_df = load_credentials()
     updated_creds = creds_df[creds_df['Username'].astype(str) != str(username)]
     conn.update(worksheet="Credentials", data=updated_creds)
+    st.cache_data.clear()
 
 # --- DIRECTORY AND MATRIX MANAGEMENT ---
 def load_directory():
@@ -121,20 +124,24 @@ def load_matrix(team, dept):
 
 def save_matrix(team, dept, df):
     conn.update(worksheet=get_sheet_name(team, dept), data=df)
+    st.cache_data.clear()
 
 def add_to_directory(team, dept):
     dir_df = load_directory()
-    if not ((dir_df['Team'].astype(str) == str(team)) & (dir_df['Department'].astype(str) == str(dept))).any():
-        new_row = pd.DataFrame([{"Team": str(team), "Department": str(dept)}])
+    if not ((dir_df['Team'].astype(str).str.strip() == str(team).strip()) & (dir_df['Department'].astype(str).str.strip() == str(dept).strip())).any():
+        new_row = pd.DataFrame([{"Team": str(team).strip(), "Department": str(dept).strip()}])
         conn.update(worksheet="Directory", data=pd.concat([dir_df, new_row], ignore_index=True))
+        
         sheet_name = get_sheet_name(team, dept)
         ensure_worksheet_exists(sheet_name)
         conn.update(worksheet=sheet_name, data=pd.DataFrame(columns=['Name', 'Designation']))
+        st.cache_data.clear() # Fixes the "two-click" refresh bug
 
 def delete_from_directory(team, dept):
     dir_df = load_directory()
-    updated_dir = dir_df[~((dir_df['Team'].astype(str) == str(team)) & (dir_df['Department'].astype(str) == str(dept)))]
+    updated_dir = dir_df[~((dir_df['Team'].astype(str).str.strip() == str(team).strip()) & (dir_df['Department'].astype(str).str.strip() == str(dept).strip()))]
     conn.update(worksheet="Directory", data=updated_dir)
+    st.cache_data.clear()
 
 # --- AUTHENTICATION STATE ---
 if 'authenticated' not in st.session_state:
@@ -186,7 +193,6 @@ if not st.session_state['authenticated']:
                     st.session_state['username'] = str(username)
                     st.session_state['team_access'] = str(user_row.iloc[0]['Team'])
                     st.session_state['dept_access'] = str(user_row.iloc[0]['Department'])
-                    # Reset the admin navigation tab so it doesn't get stuck
                     if "admin_nav" in st.session_state:
                         del st.session_state["admin_nav"]
                     st.rerun()
@@ -222,7 +228,6 @@ if 'flash_error' in st.session_state:
 
 # --- REUSABLE UI HELPERS ---
 def render_team_selector(prefix, role, my_team, teams_list, directory_df):
-    """Centralized dropdown to cleanly select Team/Dept across all tabs."""
     colA, colB = st.columns(2)
     if role == 'superadmin':
         selected_team = colA.selectbox("Select Team:", teams_list, key=f"{prefix}_t")
@@ -254,7 +259,6 @@ if role in ['superadmin', 'admin']:
     teams_list = directory_df['Team'].unique().tolist() if role == 'superadmin' else [my_team] if my_team in directory_df['Team'].tolist() else []
 
     # --- TOP LEVEL NAVIGATION ROUTER ---
-    # Team Admins strictly only get Editor, Members, and Skills!
     if role == 'superadmin':
         nav_options = [
             "📝 Matrix Editor", "👤 Members", "🎯 Skills", 
@@ -263,7 +267,6 @@ if role in ['superadmin', 'admin']:
     else:
         nav_options = ["📝 Matrix Editor", "👤 Members", "🎯 Skills"]
         
-    # Ensure current selected tab is valid (fixes visual bug if role swaps from superadmin to admin)
     if st.session_state.get("admin_nav") not in nav_options:
         st.session_state["admin_nav"] = nav_options[0]
 
@@ -290,6 +293,7 @@ if role in ['superadmin', 'admin']:
                     st.session_state[state_key] = edited_df
                     save_matrix(sel_t, sel_d, edited_df)
                     st.session_state['flash_msg'] = "Scores saved successfully!"
+                    time.sleep(1) # Allow Google API to sync
                     st.rerun()
         else: st.warning("No Teams found. Please create one.")
             
@@ -317,6 +321,7 @@ if role in ['superadmin', 'admin']:
                             st.session_state[state_key] = updated_df
                             save_matrix(sel_t, sel_d, updated_df)
                             st.session_state['flash_msg'] = f"Added {new_name}!"
+                            time.sleep(1)
                             st.rerun()
                 with col2:
                     st.markdown("#### ❌ Remove Member")
@@ -327,6 +332,7 @@ if role in ['superadmin', 'admin']:
                             st.session_state[state_key] = updated_df
                             save_matrix(sel_t, sel_d, updated_df)
                             st.session_state['flash_msg'] = f"Deleted {mem_to_del}."
+                            time.sleep(1)
                             st.rerun()
 
     # --- TAB 3: SKILLS ---
@@ -350,6 +356,7 @@ if role in ['superadmin', 'admin']:
                                 st.session_state[state_key] = df
                                 save_matrix(sel_t, sel_d, df)
                                 st.session_state['flash_msg'] = f"Added '{new_skill}'!"
+                                time.sleep(1)
                                 st.rerun()
                 with col2:
                     st.markdown("#### ❌ Remove Skill")
@@ -361,6 +368,7 @@ if role in ['superadmin', 'admin']:
                             st.session_state[state_key] = updated_df
                             save_matrix(sel_t, sel_d, updated_df)
                             st.session_state['flash_msg'] = f"Removed '{skil_to_del}'."
+                            time.sleep(1)
                             st.rerun()
 
     # --- TAB 4: RATING DASHBOARD (SUPERADMIN ONLY) ---
@@ -440,15 +448,23 @@ if role in ['superadmin', 'admin']:
                     else:
                         add_to_directory(new_t, new_d)
                         st.session_state['flash_msg'] = "Structure created!"
+                        time.sleep(1) # Sync delay fix
                         st.rerun()
         
         st.divider()
         st.subheader("Current Master Directory")
         st.write("Select a row and press Delete (or the trash icon) to remove it.")
-        edited_dir = st.data_editor(directory_df, hide_index=True, use_container_width=True, num_rows="dynamic", disabled=("Team", "Department"), key="dir_editor")
+        
+        # Clean directory before rendering to prevent NaN crashes
+        safe_dir = directory_df.dropna(how='all').fillna("")
+        edited_dir = st.data_editor(safe_dir, hide_index=True, use_container_width=True, num_rows="dynamic", disabled=("Team", "Department"), key="dir_editor")
+        
         if st.button("💾 Save Directory Changes", type="primary"):
-            conn.update(worksheet="Directory", data=edited_dir)
+            cleaned_dir = edited_dir[edited_dir['Team'].astype(str).str.strip() != ""]
+            conn.update(worksheet="Directory", data=cleaned_dir)
+            st.cache_data.clear()
             st.session_state['flash_msg'] = "Directory updated!"
+            time.sleep(1)
             st.rerun()
 
     # --- TAB 7: CREDENTIALS (SUPERADMIN ONLY) ---
@@ -460,8 +476,7 @@ if role in ['superadmin', 'admin']:
         c_role = st.selectbox("Assign Role", ["editor", "admin", "superadmin"])
         if c_role == "editor":
             existing = set(zip(creds_df[creds_df['Role']=='editor']['Team'], creds_df[creds_df['Role']=='editor']['Department']))
-            # Ensure safe string conversion to avoid TypeErrors during set math or sorting
-            all_combos = set(zip(directory_df['Team'].astype(str), directory_df['Department'].astype(str)))
+            all_combos = set(zip(directory_df['Team'], directory_df['Department']))
             avail = {(str(t), str(d)) for t, d in (all_combos - existing)}
             
             if not avail: 
@@ -483,7 +498,6 @@ if role in ['superadmin', 'admin']:
         else: 
             c_team, c_dept = "All", "All"
 
-        # STRICTLY render the form ONLY if a valid team/dept is available
         if show_form and c_team is not None and c_dept is not None:
             with st.form("new_user_form", clear_on_submit=True):
                 c_user = st.text_input("New Username")
@@ -492,6 +506,7 @@ if role in ['superadmin', 'admin']:
                     if c_user and c_pass:
                         if add_credential(c_user, c_pass, c_role, c_team, c_dept):
                             st.session_state['flash_msg'] = f"Created {c_role} '{c_user}'!"
+                            time.sleep(1)
                             st.rerun()
                         else: st.error("Username already exists!")
 
@@ -502,16 +517,24 @@ if role in ['superadmin', 'admin']:
             "Username": st.column_config.TextColumn("Username", required=True),
             "Password": st.column_config.TextColumn("Password (Visible)", required=True),
             "Role": st.column_config.SelectboxColumn("Role", options=["editor", "admin", "superadmin"], required=True),
+            "Team": st.column_config.TextColumn("Team", required=True),
             "Department": st.column_config.TextColumn("Department", required=True)
         }
         
         edited_creds = st.data_editor(view_df, column_config=cfg, hide_index=True, use_container_width=True, num_rows="dynamic", key="role_editor")
+        
         if st.button("💾 Save Credential Changes", type="primary"):
-            if 'superadmin' not in edited_creds['Username'].values: 
-                st.error("Cannot delete master superadmin!")
+            # Sanitize data: completely remove empty lines to prevent crashes/wipeouts
+            cleaned_creds = edited_creds.dropna(how='all').fillna("")
+            cleaned_creds = cleaned_creds[cleaned_creds['Username'].astype(str).str.strip() != ""]
+            
+            if 'superadmin' not in cleaned_creds['Username'].astype(str).values: 
+                st.error("Action Blocked: You cannot delete the master 'superadmin' account!")
             else:
-                conn.update(worksheet="Credentials", data=edited_creds)
-                st.session_state['flash_msg'] = "Credentials updated!"
+                conn.update(worksheet="Credentials", data=cleaned_creds)
+                st.cache_data.clear()
+                st.session_state['flash_msg'] = "Credentials updated successfully!"
+                time.sleep(1) # Sync delay fix
                 st.rerun()
 
 # --- EDITOR ROLE VIEW ---
