@@ -328,7 +328,7 @@ try:
                         )
 
         # -------------------------------------------------------------------
-        # VIEW 2: SKILL ANALYTICS (TABBED)
+        # VIEW 2: SKILL ANALYTICS (TABBED WITH CSV EXPORT)
         # -------------------------------------------------------------------
         elif selected_tab == "📈 Analytics":
             if teams_list:
@@ -400,7 +400,7 @@ try:
                             with c2:
                                 st.bar_chart(person_data.set_index('Skill'), color="#3498db", use_container_width=True)
 
-                        # --- TAB 3: ZERO SKILL ANALYSIS (CONSOLIDATED TABLE) ---
+                        # --- TAB 3: ZERO SKILL ANALYSIS (WITH CSV EXPORT) ---
                         with tab_gaps:
                             st.subheader("⚠️ Missing Skills & Cross-Training")
                             
@@ -427,6 +427,15 @@ try:
                             if zero_skill_data:
                                 gap_df = pd.DataFrame(zero_skill_data)
                                 st.dataframe(gap_df, hide_index=True, use_container_width=True)
+                                
+                                # Convert DF to CSV for download
+                                gap_csv = gap_df.to_csv(index=False).encode('utf-8')
+                                st.download_button(
+                                    label="📥 Download Gap Analysis (CSV)",
+                                    data=gap_csv,
+                                    file_name=f"{sel_t}_{sel_d}_skill_gaps.csv",
+                                    mime="text/csv",
+                                )
                             else:
                                 st.success("🎉 Incredible! Everyone on this team has at least a beginner level (1+) in every single tracked skill.")
 
