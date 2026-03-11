@@ -86,11 +86,6 @@ def add_credential(username, password, role, team, dept):
     conn.update(worksheet="Credentials", data=updated_creds)
     return True
 
-def delete_credential(username):
-    creds_df = load_credentials()
-    updated_creds = creds_df[creds_df['Username'].astype(str) != str(username)]
-    conn.update(worksheet="Credentials", data=updated_creds)
-
 
 # --- DIRECTORY AND MATRIX MANAGEMENT ---
 def load_directory():
@@ -145,11 +140,6 @@ def add_to_directory(team, dept):
         empty_df = pd.DataFrame(columns=['Name', 'Designation'])
         ensure_worksheet_exists(sheet_name)
         conn.update(worksheet=sheet_name, data=empty_df)
-
-def delete_from_directory(team, dept):
-    dir_df = load_directory()
-    updated_dir = dir_df[~((dir_df['Team'].astype(str) == str(team)) & (dir_df['Department'].astype(str) == str(dept)))]
-    conn.update(worksheet="Directory", data=updated_dir)
 
 
 # --- AUTHENTICATION STATE ---
@@ -374,7 +364,6 @@ if role in ['superadmin', 'admin']:
     directory_df = load_directory()
     creds_df = load_credentials()
     
-    # Restrict teams list based on access level (FORCE STRINGS to prevent TypeErrors)
     directory_df['Team'] = directory_df['Team'].astype(str)
     directory_df['Department'] = directory_df['Department'].astype(str)
     creds_df['Team'] = creds_df['Team'].astype(str)
@@ -386,7 +375,6 @@ if role in ['superadmin', 'admin']:
     else:
         teams_list = [my_team] if my_team in directory_df['Team'].tolist() else []
 
-    # Create the 5 Main Tabs
     t_edit, t_dash, t_stat, t_hier, t_cred = st.tabs([
         "📝 Matrix Editor", 
         "📊 Rating Dashboard", 
@@ -472,38 +460,50 @@ if role in ['superadmin', 'admin']:
     with t_hier:
         st.header("🏢 Team Hierarchy Setup")
         if role == 'superadmin':
-            st.write("Create a new organizational structure. If the Team already exists, type it exactly as it appears to add a new department to it.")
+            st.write("Manage your organizational structure below.")
             
-            has_dept = st.radio("Does this Team have departments?", ["No, just a Team", "Yes, Team with Departments"])
+            action_type = st.radio("What would you like to do?", ["Create a New Team", "Add Department to Existing Team"])
             
             with st.form("new_hierarchy_form", clear_on_submit=True):
-                new_t_name = st.text_input("Team Name (e.g., 'Apollo')")
-                new_d_name = st.text_input("Department Name (e.g., 'Backend')") if has_dept == "Yes, Team with Departments" else "None"
+                if action_type == "Create a New Team":
+                    has_dept = st.radio("Does this new team have departments?", ["No, just a Team", "Yes, Team with Departments"])
+                    new_t_name = st.text_input("New Team Name (e.g., 'Apollo')")
+                    new_d_name = st.text_input("Department Name (e.g., 'Backend')") if has_dept == "Yes, Team with Departments" else "None"
+                else:
+                    if teams_list:
+                        new_t_name = st.selectbox("Select Existing Team", teams_list)
+                        new_d_name = st.text_input("New Department Name (e.g., 'QA')")
+                    else:
+                        st.warning("No teams exist yet. Please create a new team first.")
+                        new_t_name, new_d_name = None, None
                 
                 if st.form_submit_button("Create Structure"):
-                    if new_t_name:
-                        add_to_directory(new_t_name, new_d_name)
-                        msg = f"Created Team '{new_t_name}'" if new_d_name == "None" else f"Created '{new_t_name} - {new_d_name}'"
-                        st.session_state['flash_msg'] = msg
-                        st.rerun()
+                    if new_t_name and new_d_name:
+                        if new_d_name == "None" and action_type == "Add Department to Existing Team":
+                             st.error("Please provide a valid department name.")
+                        else:
+                            add_to_directory(new_t_name, new_d_name)
+                            msg = f"Created Team '{new_t_name}'" if new_d_name == "None" else f"Added '{new_d_name}' to '{new_t_name}'"
+                            st.session_state['flash_msg'] = msg
+                            st.rerun()
             
-            st.divider()
-            st.subheader("🗑️ Delete Structure")
-            col_del1, col_del2 = st.columns(2)
-            del_team = col_del1.selectbox("Select Team to Delete", teams_list, key="del_team")
-            
-            if del_team:
-                del_depts = directory_df[directory_df['Team'] == del_team]['Department'].tolist()
-                del_dept = col_del2.selectbox("Select Department to Delete", sorted(del_depts), key="del_dept")
-                
-                if st.button("❌ Delete Selection", type="secondary"):
-                    delete_from_directory(del_team, del_dept)
-                    st.session_state['flash_msg'] = f"Removed {del_team} - {del_dept} from the directory."
-                    st.rerun()
-
             st.divider()
             st.subheader("Current Master Directory")
-            st.dataframe(directory_df, hide_index=True, use_container_width=True)
+            st.write("You can delete existing Teams/Departments directly from the table below by selecting the row and pressing the delete key (or trash icon).")
+            
+            edited_dir = st.data_editor(
+                directory_df,
+                hide_index=True,
+                use_container_width=True,
+                num_rows="dynamic",
+                disabled=("Team", "Department"), 
+                key="dir_editor"
+            )
+            
+            if st.button("💾 Save Directory Changes", type="primary"):
+                conn.update(worksheet="Directory", data=edited_dir)
+                st.session_state['flash_msg'] = "Directory updated successfully!"
+                st.rerun()
             
         else:
             st.warning("Access Restricted: Only Superadmins can manage the global team hierarchy.")
@@ -594,7 +594,6 @@ if role in ['superadmin', 'admin']:
         st.header("Credential List")
         st.write("View, edit, or delete existing user credentials directly in the table below.")
         
-        # Superadmin sees all; Team admin sees only their team
         if role == 'superadmin':
             view_df = creds_df.copy()
             role_options = ["editor", "admin", "superadmin"]
