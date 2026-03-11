@@ -10,6 +10,16 @@ import time
 # ==========================================
 st.set_page_config(page_title="UBTI Skill Matrix", layout="wide", initial_sidebar_state="expanded")
 
+# --- Helper Function for Table Styling ---
+def style_table(df):
+    """Applies a bold, colored header to Pandas DataFrames for Streamlit st.table"""
+    return df.style.set_table_styles(
+        [
+            {"selector": "th", "props": [("background-color", "#1f77b4"), ("color", "white"), ("font-weight", "bold"), ("font-size", "15px"), ("padding", "10px")]},
+            {"selector": "td", "props": [("padding", "8px"), ("border-bottom", "1px solid #ddd")]}
+        ]
+    )
+
 # ==========================================
 # 2. DATABASE SETUP (GOOGLE SHEETS)
 # ==========================================
@@ -160,7 +170,6 @@ if not st.session_state['authenticated']:
     col_info, col_divider, col_login = st.columns([1.3, 0.1, 0.9])
     
     with col_info:
-        # --- Updated Header ---
         st.markdown("# 🎯 UBTI Skill Matrix")
         st.markdown("### Empowering Teams Through Skill Tracking")
         st.write("Track, analyze, and manage your organization's capabilities securely with our dynamic dashboard.")
@@ -329,7 +338,7 @@ try:
                         )
 
         # -------------------------------------------------------------------
-        # VIEW 2: SKILL ANALYTICS
+        # VIEW 2: SKILL ANALYTICS (TABBED WITH CUSTOM STYLING)
         # -------------------------------------------------------------------
         elif selected_tab == "📈 Analytics":
             if teams_list:
@@ -383,7 +392,9 @@ try:
                                     "🥉 3rd Place": f"{n[2]} ({sc[2]})" if len(n)>2 else "-"
                                 })
                             
-                            st.table(pd.DataFrame(t3).set_index("Skill"))
+                            # APPLYING CUSTOM HEADER STYLING
+                            df_t3 = pd.DataFrame(t3).set_index("Skill")
+                            st.table(style_table(df_t3))
 
                         # --- TAB 2: INDIVIDUAL PROFILES ---
                         with tab_person:
@@ -401,7 +412,7 @@ try:
                             with c2:
                                 st.bar_chart(person_data.set_index('Skill'), color="#3498db", use_container_width=True)
 
-                        # --- TAB 3: ZERO SKILL ANALYSIS ---
+                        # --- TAB 3: ZERO SKILL ANALYSIS (WITH CSV EXPORT & STYLING) ---
                         with tab_gaps:
                             st.subheader("⚠️ Missing Skills & Cross-Training")
                             
@@ -419,15 +430,16 @@ try:
                                 zero_people = num_df[num_df[s] == 0]['Name'].tolist()
                                 if zero_people:
                                     zero_skill_data.append({
-                                        "Skill": s, 
-                                        "Members with 0 Score": ", ".join(zero_people)
+                                        "Skill Category": s, 
+                                        "Members with 0 Score (Needs Training)": ", ".join(zero_people)
                                     })
                                     
                             if zero_skill_data:
-                                gap_df = pd.DataFrame(zero_skill_data)
-                                st.dataframe(gap_df, hide_index=True, use_container_width=True)
+                                gap_df = pd.DataFrame(zero_skill_data).set_index("Skill Category")
+                                # APPLYING CUSTOM HEADER STYLING
+                                st.table(style_table(gap_df))
                                 
-                                gap_csv = gap_df.to_csv(index=False).encode('utf-8')
+                                gap_csv = gap_df.to_csv().encode('utf-8')
                                 st.download_button(
                                     label="📥 Download Gap Analysis (CSV)",
                                     data=gap_csv,
@@ -463,7 +475,7 @@ try:
             else: st.warning("No Teams found. Please create one.")
                 
         # -------------------------------------------------------------------
-        # VIEW 4: MEMBERS
+        # VIEW 4: MEMBERS (NOW LISTS CURRENT MEMBERS)
         # -------------------------------------------------------------------
         elif selected_tab == "👤 Members":
             if teams_list:
@@ -473,6 +485,7 @@ try:
                     if state_key not in st.session_state: st.session_state[state_key] = load_matrix(sel_t, sel_d)
                     df = st.session_state[state_key]
                     
+                    # Top Row: Add / Remove Actions
                     col1, col2 = st.columns(2)
                     with col1:
                         st.markdown("#### ➕ Add Member")
@@ -500,6 +513,16 @@ try:
                                 st.session_state['flash_msg'] = f"Deleted {mem_to_del}."
                                 time.sleep(1)
                                 st.rerun()
+
+                    # Bottom Section: Display current team members
+                    st.divider()
+                    st.subheader(f"📋 Current Members ({sel_t} - {sel_d})")
+                    if not df.empty and 'Name' in df.columns:
+                        mem_df = df[['Name', 'Designation']].copy().set_index('Name')
+                        # APPLYING CUSTOM HEADER STYLING
+                        st.table(style_table(mem_df))
+                    else:
+                        st.info("No members found in this team/department.")
 
         # -------------------------------------------------------------------
         # VIEW 5: SKILLS
@@ -675,10 +698,9 @@ try:
                     st.rerun()
 
     # -------------------------------------------------------------------
-    # EDITOR ROLE VIEW (Updated Header)
+    # EDITOR ROLE VIEW
     # -------------------------------------------------------------------
     else:
-        # --- Updated Generic Header for Editors ---
         st.markdown(f"**Welcome to the UBTI Skill Matrix.**")
         st.write(f"You are currently contributing to the {get_display_name(my_team, my_dept)} Skill Matrix.")
         state_key = f"data_{my_team}_{my_dept}"
