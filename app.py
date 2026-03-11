@@ -5,7 +5,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # 1. Page Configuration
-st.set_page_config(page_title="SkillMatrix Dashboard", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="SkillMatrix", layout="wide", initial_sidebar_state="expanded")
 
 # --- DATABASE SETUP (GOOGLE SHEETS) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -162,8 +162,8 @@ if 'authenticated' not in st.session_state:
 
 # --- BEAUTIFUL LOGIN PAGE ---
 if not st.session_state['authenticated']:
-    # Use columns to split the page: 55% left, 10% spacing, 35% right
-    col_info, col_space, col_login = st.columns([1.3, 0.1, 0.9])
+    # Use columns to split the page: 55% left, thin divider, 40% right
+    col_info, col_divider, col_login = st.columns([1.3, 0.1, 0.9])
     
     with col_info:
         st.markdown("# 🚀 SkillMatrix")
@@ -181,10 +181,14 @@ if not st.session_state['authenticated']:
             st.success("**📈 Deep Analytics**\n\nIdentify top performers and targeted training opportunities.")
             st.error("**🔐 Role-Based Access**\n\nSecure, specific views for Admins, Managers, and Editors.")
             
-        st.markdown("---")
-        
-        # A more abstract, modern analytics image
-        st.image("https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80", use_container_width=True)
+    with col_divider:
+        # Create a subtle vertical line using HTML/CSS
+        st.markdown(
+            """
+            <div style="border-left: 2px solid rgba(128, 128, 128, 0.2); height: 100%; min-height: 400px; margin-left: auto; margin-right: auto;"></div>
+            """,
+            unsafe_allow_html=True
+        )
 
     with col_login:
         st.markdown("<br><br>", unsafe_allow_html=True) # Push the form down to align better
@@ -237,7 +241,7 @@ if st.sidebar.button("Logout"):
     st.session_state['dept_access'] = None
     st.rerun()
 
-# DYNAMIC TITLE BASED ON LOGIN
+# --- DYNAMIC HEADER ---
 if st.session_state['role'] == 'superadmin':
     st.title("🌐 Enterprise SkillMatrix")
 else:
