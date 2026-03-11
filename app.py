@@ -338,7 +338,7 @@ try:
                         )
 
         # -------------------------------------------------------------------
-        # VIEW 2: SKILL ANALYTICS (TABBED WITH CUSTOM STYLING)
+        # VIEW 2: SKILL ANALYTICS
         # -------------------------------------------------------------------
         elif selected_tab == "📈 Analytics":
             if teams_list:
@@ -393,7 +393,7 @@ try:
                                 })
                             
                             df_t3 = pd.DataFrame(t3)
-                            st.table(style_table(df_t3))
+                            st.dataframe(df_t3, hide_index=True, use_container_width=True)
 
                         # --- TAB 2: INDIVIDUAL PROFILES ---
                         with tab_person:
@@ -407,11 +407,11 @@ try:
                             c1, c2 = st.columns([1, 2])
                             with c1:
                                 active_skills = person_data[person_data['Score'] > 0]
-                                st.table(style_table(active_skills))
+                                st.dataframe(active_skills, hide_index=True, use_container_width=True)
                             with c2:
                                 st.bar_chart(person_data.set_index('Skill'), color="#3498db", use_container_width=True)
 
-                        # --- TAB 3: ZERO SKILL ANALYSIS (WITH CSV EXPORT & STYLING) ---
+                        # --- TAB 3: ZERO SKILL ANALYSIS ---
                         with tab_gaps:
                             st.subheader("⚠️ Missing Skills & Cross-Training")
                             
@@ -435,7 +435,7 @@ try:
                                     
                             if zero_skill_data:
                                 gap_df = pd.DataFrame(zero_skill_data)
-                                st.table(style_table(gap_df))
+                                st.dataframe(gap_df, hide_index=True, use_container_width=True)
                                 
                                 gap_csv = gap_df.to_csv(index=False).encode('utf-8')
                                 st.download_button(
@@ -473,7 +473,7 @@ try:
             else: st.warning("No Teams found. Please create one.")
                 
         # -------------------------------------------------------------------
-        # VIEW 4: MEMBERS (NOW WITH INLINE DATA EDITOR)
+        # VIEW 4: MEMBERS (INLINE DATA EDITOR)
         # -------------------------------------------------------------------
         elif selected_tab == "👤 Members":
             if teams_list:
@@ -518,7 +518,7 @@ try:
                         st.rerun()
 
         # -------------------------------------------------------------------
-        # VIEW 5: SKILLS
+        # VIEW 5: SKILLS (INLINE DATA EDITOR)
         # -------------------------------------------------------------------
         elif selected_tab == "🎯 Skills":
             if teams_list:
@@ -528,31 +528,51 @@ try:
                     if state_key not in st.session_state: st.session_state[state_key] = load_matrix(sel_t, sel_d)
                     df = st.session_state[state_key]
                     
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown("#### ➕ Add Skill")
-                        with st.form(f"add_skil_{sel_t}_{sel_d}", clear_on_submit=True):
-                            new_skill = st.text_input("Skill Name")
-                            if st.form_submit_button("Add Skill") and new_skill:
-                                if new_skill not in df.columns:
-                                    df[new_skill] = 0
-                                    st.session_state[state_key] = df
-                                    save_matrix(sel_t, sel_d, df)
-                                    st.session_state['flash_msg'] = f"Added '{new_skill}'!"
-                                    time.sleep(1)
-                                    st.rerun()
-                    with col2:
-                        st.markdown("#### ❌ Remove Skill")
-                        with st.form(f"del_skil_{sel_t}_{sel_d}"):
-                            skil_list = [c for c in df.columns if c not in ['Name', 'Designation']]
-                            skil_to_del = st.selectbox("Select Skill", skil_list) if skil_list else None
-                            if st.form_submit_button("Delete Skill") and skil_to_del:
-                                updated_df = df.drop(columns=[skil_to_del])
-                                st.session_state[state_key] = updated_df
-                                save_matrix(sel_t, sel_d, updated_df)
-                                st.session_state['flash_msg'] = f"Removed '{skil_to_del}'."
-                                time.sleep(1)
-                                st.rerun()
+                    st.subheader(f"🎯 Manage Skills ({sel_t} - {sel_d})")
+                    st.markdown("""
+                    Add or delete tracked skills using the table below. 
+                    *⚠️ **Note:** If you edit an existing skill's name, the system will treat it as a brand new skill, and all previous scores for it will be reset to 0.*
+                    """)
+                    
+                    # Extract current skills into a DataFrame for the editor
+                    current_skills = [c for c in df.columns if c not in ['Name', 'Designation']]
+                    skills_df = pd.DataFrame({"Skill Category": current_skills})
+                    
+                    edited_skills = st.data_editor(
+                        skills_df,
+                        num_rows="dynamic",
+                        hide_index=True,
+                        use_container_width=True,
+                        key=f"skill_editor_{sel_t}_{sel_d}"
+                    )
+                    
+                    if st.button("💾 Save Skill Changes", type="primary"):
+                        # Clean up the new skill list
+                        edited_skills = edited_skills.dropna()
+                        new_skill_list = edited_skills['Skill Category'].astype(str).str.strip().tolist()
+                        new_skill_list = [s for s in new_skill_list if s != ""]
+                        
+                        # Remove duplicates while preserving order
+                        seen = set()
+                        unique_new_skills = [x for x in new_skill_list if not (x in seen or seen.add(x))]
+                        
+                        # Reconstruct the main dataframe
+                        # Always keep Name and Designation intact
+                        new_df = df[['Name', 'Designation']].copy() if not df.empty else pd.DataFrame(columns=['Name', 'Designation'])
+                        
+                        for skill in unique_new_skills:
+                            if skill in df.columns:
+                                # Keep existing scores for this skill
+                                new_df[skill] = df[skill]
+                            else:
+                                # This is a brand new skill, default everyone to 0
+                                new_df[skill] = 0
+                                
+                        st.session_state[state_key] = new_df
+                        save_matrix(sel_t, sel_d, new_df)
+                        st.session_state['flash_msg'] = "Skills updated successfully!"
+                        time.sleep(1)
+                        st.rerun()
 
         # -------------------------------------------------------------------
         # VIEW 6: TEAM HIERARCHY
