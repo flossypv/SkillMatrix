@@ -10,16 +10,6 @@ import time
 # ==========================================
 st.set_page_config(page_title="UBTI Skill Matrix", layout="wide", initial_sidebar_state="expanded")
 
-# --- Helper Function for Table Styling ---
-def style_table(df):
-    """Applies a bold, colored header to Pandas DataFrames for Streamlit st.table"""
-    return df.style.set_table_styles(
-        [
-            {"selector": "th", "props": [("background-color", "#1f77b4"), ("color", "white"), ("font-weight", "bold"), ("font-size", "15px"), ("padding", "10px")]},
-            {"selector": "td", "props": [("padding", "8px"), ("border-bottom", "1px solid #ddd")]}
-        ]
-    )
-
 # ==========================================
 # 2. DATABASE SETUP (GOOGLE SHEETS)
 # ==========================================
@@ -338,7 +328,7 @@ try:
                         )
 
         # -------------------------------------------------------------------
-        # VIEW 2: SKILL ANALYTICS (TABBED WITH CUSTOM STYLING)
+        # VIEW 2: SKILL ANALYTICS
         # -------------------------------------------------------------------
         elif selected_tab == "📈 Analytics":
             if teams_list:
@@ -392,9 +382,8 @@ try:
                                     "🥉 3rd Place": f"{n[2]} ({sc[2]})" if len(n)>2 else "-"
                                 })
                             
-                            # APPLYING CUSTOM HEADER STYLING
-                            df_t3 = pd.DataFrame(t3).set_index("Skill")
-                            st.table(style_table(df_t3))
+                            # Using Streamlit's native dataframe for bold headers & no colors
+                            st.dataframe(pd.DataFrame(t3), hide_index=True, use_container_width=True)
 
                         # --- TAB 2: INDIVIDUAL PROFILES ---
                         with tab_person:
@@ -412,7 +401,7 @@ try:
                             with c2:
                                 st.bar_chart(person_data.set_index('Skill'), color="#3498db", use_container_width=True)
 
-                        # --- TAB 3: ZERO SKILL ANALYSIS (WITH CSV EXPORT & STYLING) ---
+                        # --- TAB 3: ZERO SKILL ANALYSIS (WITH CSV EXPORT) ---
                         with tab_gaps:
                             st.subheader("⚠️ Missing Skills & Cross-Training")
                             
@@ -435,11 +424,11 @@ try:
                                     })
                                     
                             if zero_skill_data:
-                                gap_df = pd.DataFrame(zero_skill_data).set_index("Skill Category")
-                                # APPLYING CUSTOM HEADER STYLING
-                                st.table(style_table(gap_df))
+                                gap_df = pd.DataFrame(zero_skill_data)
+                                # Using Streamlit's native dataframe for bold headers & no colors
+                                st.dataframe(gap_df, hide_index=True, use_container_width=True)
                                 
-                                gap_csv = gap_df.to_csv().encode('utf-8')
+                                gap_csv = gap_df.to_csv(index=False).encode('utf-8')
                                 st.download_button(
                                     label="📥 Download Gap Analysis (CSV)",
                                     data=gap_csv,
@@ -475,7 +464,7 @@ try:
             else: st.warning("No Teams found. Please create one.")
                 
         # -------------------------------------------------------------------
-        # VIEW 4: MEMBERS (NOW LISTS CURRENT MEMBERS)
+        # VIEW 4: MEMBERS
         # -------------------------------------------------------------------
         elif selected_tab == "👤 Members":
             if teams_list:
@@ -518,9 +507,9 @@ try:
                     st.divider()
                     st.subheader(f"📋 Current Members ({sel_t} - {sel_d})")
                     if not df.empty and 'Name' in df.columns:
-                        mem_df = df[['Name', 'Designation']].copy().set_index('Name')
-                        # APPLYING CUSTOM HEADER STYLING
-                        st.table(style_table(mem_df))
+                        mem_df = df[['Name', 'Designation']]
+                        # Using Streamlit's native dataframe for bold headers & no colors
+                        st.dataframe(mem_df, hide_index=True, use_container_width=True)
                     else:
                         st.info("No members found in this team/department.")
 
