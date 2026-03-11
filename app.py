@@ -61,7 +61,6 @@ def ensure_worksheet_exists(sheet_name):
     except Exception:
         pass
 
-# --- DYNAMIC CREDENTIALS MANAGEMENT ---
 def load_credentials():
     try:
         df = conn.read(worksheet="Credentials", ttl=0).dropna(how='all')
@@ -94,7 +93,6 @@ def delete_credential(username):
     conn.update(worksheet="Credentials", data=updated_creds)
     st.cache_data.clear()
 
-# --- DIRECTORY AND MATRIX MANAGEMENT ---
 def load_directory():
     try:
         df = conn.read(worksheet="Directory", ttl=0).dropna(how='all')
@@ -123,14 +121,11 @@ def load_matrix(team, dept):
         conn.update(worksheet=sheet_name, data=df)
         
     for col in df.columns:
-        if col not in ['Name', 'Designation', 'Team_Dept']:
+        if col not in ['Name', 'Designation']:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
     return df
 
 def save_matrix(team, dept, df):
-    # Ensure we don't save our temporary 'Team_Dept' column to the database
-    if 'Team_Dept' in df.columns:
-        df = df.drop(columns=['Team_Dept'])
     conn.update(worksheet=get_sheet_name(team, dept), data=df)
     st.cache_data.clear()
 
@@ -178,17 +173,11 @@ if not st.session_state['authenticated']:
             st.error("**🔐 Role-Based Access**\n\nSecure, specific views for Admins, Managers, and Editors.")
             
     with col_divider:
-        st.markdown(
-            """
-            <div style="border-left: 2px solid rgba(128, 128, 128, 0.2); min-height: 550px; height: 100%; margin: 0 auto;"></div>
-            """,
-            unsafe_allow_html=True
-        )
+        st.markdown('<div style="border-left: 2px solid rgba(128, 128, 128, 0.2); min-height: 550px; height: 100%; margin: 0 auto;"></div>', unsafe_allow_html=True)
 
     with col_login:
         st.markdown("<br><br>", unsafe_allow_html=True) 
         st.subheader("🔐 Secure Login")
-        st.write("Please log in to access your dashboard.")
         with st.form("login_form"):
             username = st.text_input("Username")
             password = st.text_input("Password", type="password")
@@ -203,14 +192,12 @@ if not st.session_state['authenticated']:
                         st.session_state['username'] = str(username).strip()
                         st.session_state['team_access'] = str(user_row.iloc[0]['Team']).strip()
                         st.session_state['dept_access'] = str(user_row.iloc[0]['Department']).strip()
-                        
-                        # --- LANDING PAGE SETTING ---
                         st.session_state["admin_nav"] = "📊 Dashboard"
                         st.rerun()
                     else:
                         st.error("Invalid username or password")
                 except Exception as e:
-                    st.error("Error connecting to database. Please check Google permissions.")
+                    st.error("Error connecting to database.")
     st.stop()
 
 
@@ -222,13 +209,11 @@ my_team = st.session_state['team_access']
 my_dept = st.session_state['dept_access']
 username = st.session_state['username']
 
-# Profile Section
 st.sidebar.markdown(f"### 👋 Welcome, **{username}**!")
 st.sidebar.caption(f"**Access:** {role.capitalize()}")
 if role != 'superadmin':
     st.sidebar.caption(f"**Team:** {my_team}")
 
-# Logout Button
 if st.sidebar.button("🚪 Logout", use_container_width=True):
     for key in ['authenticated', 'role', 'username', 'team_access', 'dept_access']: 
         st.session_state[key] = None
@@ -240,13 +225,9 @@ st.sidebar.divider()
 st.sidebar.markdown("## 🧭 Menu")
 
 if role == 'superadmin':
-    nav_options = [
-        "📊 Dashboard", "📈 Analytics", "📝 Matrix Editor", "👤 Members", "🎯 Skills", "🏢 Hierarchy", "🔐 Credentials"
-    ]
+    nav_options = ["📊 Dashboard", "📈 Analytics", "📝 Matrix Editor", "👤 Members", "🎯 Skills", "🏢 Hierarchy", "🔐 Credentials"]
 elif role == 'admin':
-    nav_options = [
-        "📊 Dashboard", "📈 Analytics", "📝 Matrix Editor", "👤 Members", "🎯 Skills", "🔐 Credentials"
-    ]
+    nav_options = ["📊 Dashboard", "📈 Analytics", "📝 Matrix Editor", "👤 Members", "🎯 Skills", "🔐 Credentials"]
 else:
     nav_options = []
     st.sidebar.info("You are logged in as an Editor. Use the main screen to update scores for your specific department.")
@@ -273,7 +254,6 @@ if 'flash_error' in st.session_state:
     del st.session_state['flash_error']
 
 def render_team_selector(prefix, role, my_team, teams_list, directory_df):
-    """Bulletproof Team Selector ignoring whitespace mismatches"""
     colA, colB = st.columns(2)
     if role == 'superadmin':
         selected_team = colA.selectbox("Select Team:", teams_list, key=f"{prefix}_t")
@@ -282,7 +262,6 @@ def render_team_selector(prefix, role, my_team, teams_list, directory_df):
         colA.write(f"**Team:** {selected_team}")
         
     if not selected_team: return None, None
-    
     depts = directory_df[directory_df['Team'] == selected_team]['Department'].unique().tolist()
     valid_depts = sorted([d for d in depts if str(d).strip() not in ["None", "", "nan"]])
     
@@ -298,7 +277,6 @@ try:
         directory_df = load_directory()
         creds_df = load_credentials()
         
-        # Aggressive stripping to prevent NaN matching errors
         directory_df['Team'] = directory_df['Team'].astype(str).str.strip()
         directory_df['Department'] = directory_df['Department'].astype(str).str.strip()
         creds_df['Team'] = creds_df['Team'].astype(str).str.strip()
@@ -308,83 +286,49 @@ try:
         teams_list = directory_df['Team'].unique().tolist() if role == 'superadmin' else [my_team]
         
         # -------------------------------------------------------------------
-        # VIEW 1: DASHBOARD (LANDING PAGE - DEFAULT: ALL TEAMS)
+        # VIEW 1: DASHBOARD (API QUOTA SAFE)
         # -------------------------------------------------------------------
         if selected_tab == "📊 Dashboard":
             if teams_list:
-                # Custom selector to inject "All Teams"
-                colA, colB = st.columns(2)
-                if role == 'superadmin':
-                    team_opts = ["All Teams"] + teams_list
-                    dash_team = colA.selectbox("Select Team to View:", team_opts, index=0)
-                else:
-                    dash_team = my_team
-                    colA.write(f"**Viewing Data For:** {dash_team}")
-                
-                final_df = pd.DataFrame()
-                
-                if dash_team == "All Teams":
-                    # Aggregate every department
-                    all_dfs = []
-                    for index, row in directory_df.iterrows():
-                        temp_df = load_matrix(row['Team'], row['Department'])
-                        if not temp_df.empty:
-                            temp_df['Team_Dept'] = f"{row['Team']} ({row['Department']})"
-                            all_dfs.append(temp_df)
-                    if all_dfs:
-                        final_df = pd.concat(all_dfs, ignore_index=True)
-                        final_df.fillna(0, inplace=True) # Fill NaNs for skills that don't overlap across teams
-                else:
-                    # Single team selected, now select department
-                    depts = directory_df[directory_df['Team'] == dash_team]['Department'].unique().tolist()
-                    valid_depts = sorted([d for d in depts if str(d).strip() not in ["None", "", "nan"]])
+                sel_t, sel_d = render_team_selector("dash", role, my_team, teams_list, directory_df)
+                if sel_t and sel_d:
+                    final_df = load_matrix(sel_t, sel_d)
                     
-                    if valid_depts:
-                        dash_dept = colB.selectbox("Select Department:", valid_depts)
-                        final_df = load_matrix(dash_team, dash_dept)
+                    if final_df.empty or len(final_df.columns) <= 2: 
+                        st.info("No skill data available to generate dashboard.")
                     else:
-                        final_df = load_matrix(dash_team, "None")
+                        # --- Metrics ---
+                        sk_cols = [c for c in final_df.columns if c not in ['Name', 'Designation']]
+                        top_skill = final_df[sk_cols].mean().idxmax()
+                        
+                        m1, m2 = st.columns(2)
+                        m1.metric("Total Headcount", len(final_df))
+                        m2.metric("Top Ranked Domain", top_skill)
+                        
+                        st.divider()
+                        
+                        # --- Heatmap ---
+                        st.markdown("🔴 **0-1**: Beginner | 🟡 **2**: Intermediate | 🟢 **3-4**: Expert")
+                        heatmap_data = final_df.drop(columns=['Designation'], errors='ignore')
 
-                if final_df.empty or len(final_df.columns) <= 2: 
-                    st.info("No skill data available to generate dashboard.")
-                else:
-                    # --- Metrics ---
-                    sk_cols = [c for c in final_df.columns if c not in ['Name', 'Designation', 'Team_Dept']]
-                    top_skill = final_df[sk_cols].mean().idxmax()
-                    
-                    m1, m2 = st.columns(2)
-                    m1.metric("Total Headcount", len(final_df))
-                    m2.metric("Top Ranked Domain", top_skill)
-                    
-                    st.divider()
-                    
-                    # --- Heatmap ---
-                    st.markdown("🔴 **0-1**: Beginner | 🟡 **2**: Intermediate | 🟢 **3-4**: Expert")
-                    heatmap_data = final_df.drop(columns=['Designation'], errors='ignore')
-                    
-                    # Move 'Team_Dept' to front if viewing all teams
-                    if 'Team_Dept' in heatmap_data.columns:
-                        cols = ['Name', 'Team_Dept'] + [c for c in heatmap_data.columns if c not in ['Name', 'Team_Dept']]
-                        heatmap_data = heatmap_data[cols]
-
-                    def apply_color(val):
-                        try:
-                            v = int(float(val))
-                            if v in [0, 1]: return 'background-color: #ff4b4b; color: white;'
-                            elif v == 2: return 'background-color: #ffa500; color: white;'
-                            elif v in [3, 4]: return 'background-color: #00c853; color: white;'
-                        except: pass
-                        return ''
-                    
-                    st.dataframe(
-                        heatmap_data.style.map(apply_color, subset=sk_cols), 
-                        use_container_width=True, 
-                        hide_index=True,
-                        height=400 
-                    )
+                        def apply_color(val):
+                            try:
+                                v = int(float(val))
+                                if v in [0, 1]: return 'background-color: #ff4b4b; color: white;'
+                                elif v == 2: return 'background-color: #ffa500; color: white;'
+                                elif v in [3, 4]: return 'background-color: #00c853; color: white;'
+                            except: pass
+                            return ''
+                        
+                        st.dataframe(
+                            heatmap_data.style.map(apply_color, subset=sk_cols), 
+                            use_container_width=True, 
+                            hide_index=True,
+                            height=400 
+                        )
 
         # -------------------------------------------------------------------
-        # VIEW 2: SKILL ANALYTICS (COMPACT + C# BUG FIX)
+        # VIEW 2: SKILL ANALYTICS (TOP 3)
         # -------------------------------------------------------------------
         elif selected_tab == "📈 Analytics":
             if teams_list:
@@ -406,7 +350,6 @@ try:
                             sel_sk = st.selectbox("Choose Skill", sk_cols)
                             sk_scores = num_df[['Name', sel_sk]].sort_values(by=sel_sk, ascending=False)
                             
-                            # Highlight the #1 person
                             top_person = sk_scores.iloc[0]['Name']
                             top_val = sk_scores.iloc[0][sel_sk]
                             st.success(f"**Top Expert:** \n\n {top_person} ({top_val})")
@@ -416,13 +359,12 @@ try:
 
                         st.divider()
 
-                        # --- Section 2: Professional Leaderboard ---
+                        # --- Section 2: Professional Leaderboard (Top 3) ---
                         st.subheader("🏆 Category Leaders")
                         
                         t3 = []
                         for s in sk_cols:
                             sorted_d = num_df[['Name', s]].sort_values(by=s, ascending=False)
-                            # C# BUG FIX: Direct filtering instead of `.query()` string evaluation
                             sorted_d = sorted_d[sorted_d[s] > 0] 
                             
                             n = sorted_d['Name'].tolist()
@@ -431,7 +373,7 @@ try:
                                 "Skill": s, 
                                 "🥇 1st Place": f"{n[0]} ({sc[0]})" if len(n)>0 else "-", 
                                 "🥈 2nd Place": f"{n[1]} ({sc[1]})" if len(n)>1 else "-",
-                                "Avg Score": round(num_df[s].mean(), 1)
+                                "🥉 3rd Place": f"{n[2]} ({sc[2]})" if len(n)>2 else "-"
                             })
                         
                         st.table(pd.DataFrame(t3).set_index("Skill"))
@@ -537,9 +479,8 @@ try:
                                 time.sleep(1)
                                 st.rerun()
 
-
         # -------------------------------------------------------------------
-        # VIEW 6: TEAM HIERARCHY (SUPERADMIN ONLY)
+        # VIEW 6: TEAM HIERARCHY
         # -------------------------------------------------------------------
         elif selected_tab == "🏢 Hierarchy" and role == 'superadmin':
             st.write("Manage your organizational structure below.")
@@ -578,7 +519,7 @@ try:
                 st.rerun()
 
         # -------------------------------------------------------------------
-        # VIEW 7: CREDENTIALS (SUPERADMIN & ADMIN)
+        # VIEW 7: CREDENTIALS
         # -------------------------------------------------------------------
         elif selected_tab == "🔐 Credentials":
             st.write("Setup New User Credential")
