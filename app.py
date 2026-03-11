@@ -206,52 +206,30 @@ if not st.session_state['authenticated']:
 
 
 # ==========================================
-# --- SIDEBAR: RENDERED FIRST ---
+# --- GLOBAL VARIABLES & HEADER ---
 # ==========================================
-
-st.sidebar.title("Profile")
-st.sidebar.write(f"**User:** {st.session_state['username']}")
 role = st.session_state['role']
 my_team = st.session_state['team_access']
+my_dept = st.session_state['dept_access']
+username = st.session_state['username']
 
-if role == 'superadmin': 
-    st.sidebar.write("**Access:** Superadmin")
-elif role == 'admin': 
-    st.sidebar.write(f"**Access:** Team Admin ({my_team})")
-else:
-    st.sidebar.write(f"**Team:** {my_team}")
-    if st.session_state['dept_access'] != "None": 
-        st.sidebar.write(f"**Department:** {st.session_state['dept_access']}")
+# --- TOP HEADER WITH PROFILE CARD ---
+col_title, col_profile = st.columns([3, 1])
 
-if st.sidebar.button("Logout"):
-    for key in ['authenticated', 'role', 'username', 'team_access', 'dept_access']: st.session_state[key] = None
-    if "admin_nav" in st.session_state: del st.session_state["admin_nav"]
-    st.rerun()
+with col_title:
+    st.title("🌐 Enterprise SkillMatrix" if role == 'superadmin' else f"🏢 {my_team} SkillMatrix")
+    st.markdown(f"#### 👋 Welcome back, **{username}**!")
 
-st.sidebar.divider()
+with col_profile:
+    # Aesthetically pleasing Profile/Logout Card
+    with st.container(border=True):
+        st.markdown(f"**👤 User:** {username}  \n**🔑 Access:** {role.capitalize()}  \n**🏢 Team:** {my_team}")
+        if st.button("🚪 Logout", use_container_width=True):
+            for key in ['authenticated', 'role', 'username', 'team_access', 'dept_access']: st.session_state[key] = None
+            if "admin_nav" in st.session_state: del st.session_state["admin_nav"]
+            st.rerun()
 
-# --- SIDEBAR NAVIGATION MENU ---
-if role == 'superadmin':
-    nav_options = [
-        "📝 Matrix Editor", "👤 Members", "🎯 Skills", 
-        "📊 Dashboard", "📈 Analytics", "🏢 Hierarchy", "🔐 Credentials"
-    ]
-elif role == 'admin':
-    nav_options = ["📝 Matrix Editor", "👤 Members", "🎯 Skills"]
-else:
-    nav_options = ["📝 Matrix Editor"]
-
-if st.session_state.get("admin_nav") not in nav_options:
-    st.session_state["admin_nav"] = nav_options[0]
-
-selected_tab = st.sidebar.radio("Navigation Menu", nav_options, key="admin_nav")
-
-
-# ==========================================
-# --- MAIN CONTENT & API CALLS ---
-# ==========================================
-
-st.title("🌐 Enterprise SkillMatrix" if role == 'superadmin' else f"🏢 {my_team} SkillMatrix")
+st.divider()
 
 if 'flash_msg' in st.session_state:
     st.success(st.session_state['flash_msg'])
@@ -260,6 +238,39 @@ if 'flash_error' in st.session_state:
     st.error(st.session_state['flash_error'])
     del st.session_state['flash_error']
 
+
+# ==========================================
+# --- SIDEBAR NAVIGATION MENU ---
+# ==========================================
+st.sidebar.markdown("## 🧭 Navigation")
+
+if role == 'superadmin':
+    nav_options = [
+        "📝 Matrix Editor", "👤 Members", "🎯 Skills", 
+        "📊 Dashboard", "📈 Analytics", "🏢 Hierarchy", "🔐 Credentials"
+    ]
+elif role == 'admin':
+    # Expanded Access for Team Admins
+    nav_options = [
+        "📝 Matrix Editor", "👤 Members", "🎯 Skills", 
+        "📊 Dashboard", "📈 Analytics", "🔐 Credentials"
+    ]
+else:
+    # Standard Editors don't need a menu
+    nav_options = []
+    st.sidebar.info("You are currently logged in as an Editor. Use the main screen to update scores for your specific department.")
+
+if nav_options:
+    if st.session_state.get("admin_nav") not in nav_options:
+        st.session_state["admin_nav"] = nav_options[0]
+    selected_tab = st.sidebar.radio("Select View", nav_options, key="admin_nav")
+else:
+    selected_tab = None
+
+
+# ==========================================
+# --- CORE APP LOGIC ---
+# ==========================================
 def render_team_selector(prefix, role, my_team, teams_list, directory_df):
     """Bulletproof Team Selector ignoring whitespace mismatches"""
     colA, colB = st.columns(2)
@@ -296,7 +307,7 @@ try:
         # Hardcode admins strictly to their team so UI never goes blank
         teams_list = directory_df['Team'].unique().tolist() if role == 'superadmin' else [my_team]
         
-        # --- TAB 1: MATRIX EDITOR ---
+        # --- VIEW 1: MATRIX EDITOR ---
         if selected_tab == "📝 Matrix Editor":
             st.header("Matrix Editor")
             if teams_list:
@@ -320,7 +331,7 @@ try:
                         st.rerun()
             else: st.warning("No Teams found. Please create one.")
                 
-        # --- TAB 2: MEMBERS ---
+        # --- VIEW 2: MEMBERS ---
         elif selected_tab == "👤 Members":
             st.header("Manage Members")
             if teams_list:
@@ -358,7 +369,7 @@ try:
                                 time.sleep(1)
                                 st.rerun()
 
-        # --- TAB 3: SKILLS ---
+        # --- VIEW 3: SKILLS ---
         elif selected_tab == "🎯 Skills":
             st.header("Manage Skills")
             if teams_list:
@@ -394,8 +405,8 @@ try:
                                 time.sleep(1)
                                 st.rerun()
 
-        # --- TAB 4: RATING DASHBOARD (SUPERADMIN ONLY) ---
-        elif selected_tab == "📊 Dashboard" and role == 'superadmin':
+        # --- VIEW 4: RATING DASHBOARD ---
+        elif selected_tab == "📊 Dashboard":
             st.header("Rating Dashboard")
             st.markdown("🔴 **0-1**: Beginner | 🟡 **2**: Intermediate | 🟢 **3-4**: Proficient/Expert")
             if teams_list:
@@ -416,8 +427,8 @@ try:
                             return ''
                         st.dataframe(heatmap_data.style.map(apply_color, subset=sk_cols), use_container_width=True, hide_index=True)
 
-        # --- TAB 5: SKILL ANALYTICS (SUPERADMIN ONLY) ---
-        elif selected_tab == "📈 Analytics" and role == 'superadmin':
+        # --- VIEW 5: SKILL ANALYTICS ---
+        elif selected_tab == "📈 Analytics":
             st.header("Skill Analytics")
             if teams_list:
                 sel_t, sel_d = render_team_selector("stat", role, my_team, teams_list, directory_df)
@@ -451,7 +462,7 @@ try:
                             })
                         st.dataframe(pd.DataFrame(t3), hide_index=True, use_container_width=True)
 
-        # --- TAB 6: TEAM HIERARCHY (SUPERADMIN ONLY) ---
+        # --- VIEW 6: TEAM HIERARCHY (SUPERADMIN ONLY) ---
         elif selected_tab == "🏢 Hierarchy" and role == 'superadmin':
             st.header("Team Hierarchy Setup")
             st.write("Manage your organizational structure below.")
@@ -489,36 +500,50 @@ try:
                 time.sleep(1)
                 st.rerun()
 
-        # --- TAB 7: CREDENTIALS (SUPERADMIN ONLY) ---
-        elif selected_tab == "🔐 Credentials" and role == 'superadmin':
+        # --- VIEW 7: CREDENTIALS (SUPERADMIN & ADMIN) ---
+        elif selected_tab == "🔐 Credentials":
             st.header("Setup New User Credential")
             c_team, c_dept = None, None
             show_form = True
             
-            c_role = st.selectbox("Assign Role", ["editor", "admin", "superadmin"])
-            if c_role == "editor":
-                existing = set(zip(creds_df[creds_df['Role']=='editor']['Team'], creds_df[creds_df['Role']=='editor']['Department']))
-                all_combos = set(zip(directory_df['Team'], directory_df['Department']))
-                avail = {(str(t), str(d)) for t, d in (all_combos - existing)}
+            if role == 'superadmin':
+                c_role = st.selectbox("Assign Role", ["editor", "admin", "superadmin"])
+                if c_role == "editor":
+                    existing = set(zip(creds_df[creds_df['Role']=='editor']['Team'], creds_df[creds_df['Role']=='editor']['Department']))
+                    all_combos = set(zip(directory_df['Team'], directory_df['Department']))
+                    avail = {(str(t), str(d)) for t, d in (all_combos - existing)}
+                    
+                    if not avail: 
+                        st.warning("All Team/Dept combos already have editors.")
+                        show_form = False
+                    else:
+                        c_team = st.selectbox("Assign Team", sorted(list(set([t for t, d in avail]))))
+                        avail_d = sorted([d for t, d in avail if str(t) == str(c_team)])
+                        if "None" in avail_d and len(avail_d) == 1: c_dept = "None"
+                        else: c_dept = st.selectbox("Assign Department", avail_d)
+                elif c_role == "admin":
+                    existing = creds_df[creds_df['Role']=='admin']['Team'].tolist()
+                    avail = sorted([t for t in teams_list if t not in existing])
+                    if not avail: 
+                        st.warning("All Teams already have an admin.")
+                        show_form = False
+                    else:
+                        c_team, c_dept = st.selectbox("Assign Team Admin rights to:", avail), "All"
+                else: 
+                    c_team, c_dept = "All", "All"
+            else:
+                c_role = "editor"
+                st.info(f"As a Team Admin, you can only create 'Editor' accounts for {my_team}.")
+                c_team = my_team
+                existing = creds_df[(creds_df['Role']=='editor') & (creds_df['Team']==my_team)]['Department'].tolist()
+                avail = sorted([d for d in directory_df[directory_df['Team']==my_team]['Department'].tolist() if d not in existing])
                 
                 if not avail: 
-                    st.warning("All Team/Dept combos already have editors.")
+                    st.warning(f"All departments in {my_team} already have editor credentials assigned.")
                     show_form = False
                 else:
-                    c_team = st.selectbox("Assign Team", sorted(list(set([t for t, d in avail]))))
-                    avail_d = sorted([d for t, d in avail if str(t) == str(c_team)])
-                    if "None" in avail_d and len(avail_d) == 1: c_dept = "None"
-                    else: c_dept = st.selectbox("Assign Department", avail_d)
-            elif c_role == "admin":
-                existing = creds_df[creds_df['Role']=='admin']['Team'].tolist()
-                avail = sorted([t for t in teams_list if t not in existing])
-                if not avail: 
-                    st.warning("All Teams already have an admin.")
-                    show_form = False
-                else:
-                    c_team, c_dept = st.selectbox("Assign Team Admin rights to:", avail), "All"
-            else: 
-                c_team, c_dept = "All", "All"
+                    if "None" in avail and len(avail) == 1: c_dept = "None"
+                    else: c_dept = st.selectbox("Assign Department", avail)
 
             if show_form and c_team is not None and c_dept is not None:
                 with st.form("new_user_form", clear_on_submit=True):
@@ -534,14 +559,19 @@ try:
 
             st.divider()
             st.header("Credential List")
-            view_df = creds_df.copy()
+            view_df = creds_df.copy() if role == 'superadmin' else creds_df[creds_df['Team'] == my_team].copy()
+            r_opts = ["editor", "admin", "superadmin"] if role == 'superadmin' else ["editor"]
+            
             cfg = {
                 "Username": st.column_config.TextColumn("Username", required=True),
                 "Password": st.column_config.TextColumn("Password (Visible)", required=True),
-                "Role": st.column_config.SelectboxColumn("Role", options=["editor", "admin", "superadmin"], required=True),
+                "Role": st.column_config.SelectboxColumn("Role", options=r_opts, required=True),
                 "Team": st.column_config.TextColumn("Team", required=True),
                 "Department": st.column_config.TextColumn("Department", required=True)
             }
+            
+            if role != 'superadmin': 
+                cfg["Team"] = st.column_config.TextColumn("Team", disabled=True)
             
             edited_creds = st.data_editor(view_df, column_config=cfg, hide_index=True, use_container_width=True, num_rows="dynamic", key="role_editor")
             
@@ -549,10 +579,17 @@ try:
                 cleaned_creds = edited_creds.dropna(how='all').fillna("")
                 cleaned_creds = cleaned_creds[cleaned_creds['Username'].astype(str).str.strip() != ""]
                 
-                if 'superadmin' not in cleaned_creds['Username'].astype(str).values: 
+                if 'superadmin' not in cleaned_creds['Username'].astype(str).values and role == 'superadmin': 
                     st.error("Action Blocked: You cannot delete the master 'superadmin' account!")
                 else:
-                    conn.update(worksheet="Credentials", data=cleaned_creds)
+                    if role != 'superadmin': 
+                        cleaned_creds['Team'] = my_team 
+                        other_teams_df = creds_df[creds_df['Team'] != my_team]
+                        final_creds = pd.concat([other_teams_df, cleaned_creds], ignore_index=True)
+                    else:
+                        final_creds = cleaned_creds
+                        
+                    conn.update(worksheet="Credentials", data=final_creds)
                     st.cache_data.clear()
                     st.session_state['flash_msg'] = "Credentials updated successfully!"
                     time.sleep(1)
@@ -560,7 +597,6 @@ try:
 
     # --- EDITOR ROLE VIEW ---
     else:
-        my_dept = st.session_state['dept_access']
         st.info(f"You are editing the {get_display_name(my_team, my_dept)} Skill Matrix.")
         state_key = f"data_{my_team}_{my_dept}"
         
