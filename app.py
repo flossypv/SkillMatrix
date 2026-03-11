@@ -53,7 +53,7 @@ def ensure_worksheet_exists(sheet_name):
             sh.worksheet(sheet_name)
         except gspread.exceptions.WorksheetNotFound:
             sh.add_worksheet(title=sheet_name, rows=100, cols=20)
-            time.sleep(2) # Give Google 2 seconds to sync the new tab globally
+            time.sleep(2) 
     except Exception:
         pass
 
@@ -77,8 +77,8 @@ def load_credentials():
 
 def add_credential(username, password, role, team, dept):
     creds_df = load_credentials()
-    if username in creds_df['Username'].astype(str).values: return False
-    new_user = pd.DataFrame([{"Username": username, "Password": password, "Role": role, "Team": team, "Department": dept}])
+    if username.strip() in creds_df['Username'].astype(str).str.strip().values: return False
+    new_user = pd.DataFrame([{"Username": username.strip(), "Password": password.strip(), "Role": role, "Team": team.strip(), "Department": dept.strip()}])
     updated_creds = pd.concat([creds_df, new_user], ignore_index=True)
     conn.update(worksheet="Credentials", data=updated_creds)
     st.cache_data.clear() 
@@ -86,7 +86,7 @@ def add_credential(username, password, role, team, dept):
 
 def delete_credential(username):
     creds_df = load_credentials()
-    updated_creds = creds_df[creds_df['Username'].astype(str) != str(username)]
+    updated_creds = creds_df[creds_df['Username'].astype(str).str.strip() != str(username).strip()]
     conn.update(worksheet="Credentials", data=updated_creds)
     st.cache_data.clear()
 
@@ -102,8 +102,8 @@ def load_directory():
         conn.update(worksheet="Directory", data=default_dir)
         return default_dir
 
-def get_sheet_name(team, dept): return str(team) if str(dept) == "None" else f"{team}_{dept}"
-def get_display_name(team, dept): return str(team) if str(dept) == "None" else f"{team} - {dept}"
+def get_sheet_name(team, dept): return str(team).strip() if str(dept).strip() == "None" else f"{str(team).strip()}_{str(dept).strip()}"
+def get_display_name(team, dept): return str(team).strip() if str(dept).strip() == "None" else f"{str(team).strip()} - {str(dept).strip()}"
 
 def load_matrix(team, dept):
     sheet_name = get_sheet_name(team, dept)
@@ -111,9 +111,9 @@ def load_matrix(team, dept):
         df = conn.read(worksheet=sheet_name, ttl=0).dropna(how='all', axis=1).dropna(how='all', axis=0)
         if df.empty: raise Exception("Empty Matrix")
     except Exception:
-        if str(team) == "Canyon" and str(dept) == "QA": df = pd.DataFrame(default_qa)
-        elif str(team) == "Canyon" and str(dept) == "UIUX": df = pd.DataFrame(default_uiux)
-        elif str(team) == "Canyon" and str(dept) == "Dev": df = pd.DataFrame(default_dev)
+        if str(team).strip() == "Canyon" and str(dept).strip() == "QA": df = pd.DataFrame(default_qa)
+        elif str(team).strip() == "Canyon" and str(dept).strip() == "UIUX": df = pd.DataFrame(default_uiux)
+        elif str(team).strip() == "Canyon" and str(dept).strip() == "Dev": df = pd.DataFrame(default_dev)
         else: df = pd.DataFrame(columns=['Name', 'Designation'])
         ensure_worksheet_exists(sheet_name)
         conn.update(worksheet=sheet_name, data=df)
@@ -188,13 +188,13 @@ if not st.session_state['authenticated']:
             if submit:
                 try:
                     creds_df = load_credentials()
-                    user_row = creds_df[creds_df['Username'].astype(str) == str(username)]
-                    if not user_row.empty and str(user_row.iloc[0]['Password']) == password:
+                    user_row = creds_df[creds_df['Username'].astype(str).str.strip() == str(username).strip()]
+                    if not user_row.empty and str(user_row.iloc[0]['Password']).strip() == password.strip():
                         st.session_state['authenticated'] = True
-                        st.session_state['role'] = str(user_row.iloc[0]['Role'])
-                        st.session_state['username'] = str(username)
-                        st.session_state['team_access'] = str(user_row.iloc[0]['Team'])
-                        st.session_state['dept_access'] = str(user_row.iloc[0]['Department'])
+                        st.session_state['role'] = str(user_row.iloc[0]['Role']).strip()
+                        st.session_state['username'] = str(username).strip()
+                        st.session_state['team_access'] = str(user_row.iloc[0]['Team']).strip()
+                        st.session_state['dept_access'] = str(user_row.iloc[0]['Department']).strip()
                         if "admin_nav" in st.session_state:
                             del st.session_state["admin_nav"]
                         st.rerun()
@@ -208,7 +208,6 @@ if not st.session_state['authenticated']:
 # ==========================================
 # --- SIDEBAR: RENDERED FIRST ---
 # ==========================================
-# Rendering this before API calls ensures the menu never disappears on error.
 
 st.sidebar.title("Profile")
 st.sidebar.write(f"**User:** {st.session_state['username']}")
@@ -252,7 +251,6 @@ selected_tab = st.sidebar.radio("Navigation Menu", nav_options, key="admin_nav")
 # --- MAIN CONTENT & API CALLS ---
 # ==========================================
 
-# DYNAMIC HEADER
 st.title("🌐 Enterprise SkillMatrix" if role == 'superadmin' else f"🏢 {my_team} SkillMatrix")
 
 if 'flash_msg' in st.session_state:
@@ -263,6 +261,7 @@ if 'flash_error' in st.session_state:
     del st.session_state['flash_error']
 
 def render_team_selector(prefix, role, my_team, teams_list, directory_df):
+    """Bulletproof Team Selector ignoring whitespace mismatches"""
     colA, colB = st.columns(2)
     if role == 'superadmin':
         selected_team = colA.selectbox("Select Team:", teams_list, key=f"{prefix}_t")
@@ -273,24 +272,30 @@ def render_team_selector(prefix, role, my_team, teams_list, directory_df):
     if not selected_team: return None, None
     
     depts = directory_df[directory_df['Team'] == selected_team]['Department'].unique().tolist()
-    if "None" in depts and len(depts) == 1:
+    valid_depts = sorted([d for d in depts if str(d).strip() not in ["None", "", "nan"]])
+    
+    if not valid_depts:
         return selected_team, "None"
     else:
-        selected_dept = colB.selectbox("Select Department:", sorted([d for d in depts if d != "None"]), key=f"{prefix}_d")
+        selected_dept = colB.selectbox("Select Department:", valid_depts, key=f"{prefix}_d")
         return selected_team, selected_dept
 
 
-# Wrap all core logic in a try/except to prevent screen wipeouts
 try:
     if role in ['superadmin', 'admin']:
         directory_df = load_directory()
         creds_df = load_credentials()
         
-        directory_df['Team'], directory_df['Department'] = directory_df['Team'].astype(str), directory_df['Department'].astype(str)
-        creds_df['Team'], creds_df['Department'], creds_df['Role'] = creds_df['Team'].astype(str), creds_df['Department'].astype(str), creds_df['Role'].astype(str)
+        # Aggressive stripping to prevent NaN matching errors
+        directory_df['Team'] = directory_df['Team'].astype(str).str.strip()
+        directory_df['Department'] = directory_df['Department'].astype(str).str.strip()
+        creds_df['Team'] = creds_df['Team'].astype(str).str.strip()
+        creds_df['Department'] = creds_df['Department'].astype(str).str.strip()
+        creds_df['Role'] = creds_df['Role'].astype(str).str.strip()
         
-        teams_list = directory_df['Team'].unique().tolist() if role == 'superadmin' else [my_team] if my_team in directory_df['Team'].tolist() else []
-
+        # Hardcode admins strictly to their team so UI never goes blank
+        teams_list = directory_df['Team'].unique().tolist() if role == 'superadmin' else [my_team]
+        
         # --- TAB 1: MATRIX EDITOR ---
         if selected_tab == "📝 Matrix Editor":
             st.header("Matrix Editor")
