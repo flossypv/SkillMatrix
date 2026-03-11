@@ -286,10 +286,11 @@ def display_admin_controls(team, dept, df_key):
     st.subheader(f"🛠️ Manage Structure: {disp_name}")
     
     df = st.session_state[df_key]
-    col1, col2 = st.columns(2)
     
-    with col1:
-        st.markdown("#### 👤 Members")
+    # Replaced columns with TABS for Member & Skill Management
+    tab_members, tab_skills = st.tabs(["👤 Member Management", "🎯 Skill Management"])
+    
+    with tab_members:
         with st.form(f"add_member_{team}_{dept}", clear_on_submit=True):
             new_name = st.text_input("Member Name")
             new_designation = st.text_input("Designation")
@@ -314,8 +315,7 @@ def display_admin_controls(team, dept, df_key):
                 st.session_state['flash_msg'] = f"Successfully deleted {member_to_delete}."
                 st.rerun()
 
-    with col2:
-        st.markdown("#### 🎯 Skills")
+    with tab_skills:
         with st.form(f"add_skill_{team}_{dept}", clear_on_submit=True):
             new_skill = st.text_input("Skill Name")
             if st.form_submit_button("➕ Add Skill"):
@@ -456,6 +456,8 @@ if role in ['superadmin', 'admin']:
                 
                 st.divider()
                 display_team_matrix(selected_team, selected_dept, state_key)
+                
+                # The controls for adding/removing members and skills appear here for Admins/Superadmins
                 display_admin_controls(selected_team, selected_dept, state_key)
         else:
             st.warning("No Teams found. Please create one.")
